@@ -26,3 +26,5 @@ Desktop.ini
 
 # 环境变量（如果有）
 .env
+
+.vercel
