@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="theme-color" content="#667eea">
+    <title>图文转贴图</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --bg: #f5f3ff;
+            --card: #ffffff;
+            --text: #1e293b;
+            --text-secondary: #64748b;
+            --border: #e2e8f0;
+            --radius: 16px;
+            --shadow: 0 4px 24px rgba(99,102,241,0.12);
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif;
+            background: var(--bg);
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            -webkit-font-smoothing: antialiased;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none;
+        }
+
+        /* 顶部导航 */
+        .header {
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            padding: 20px 20px 24px;
+            text-align: center;
+            position: relative;
+            border-radius: 0 0 24px 24px;
+            box-shadow: 0 4px 20px rgba(99,102,241,0.3);
+        }
+        
+        .header h1 {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+        
+        .header .sub {
+            font-size: 13px;
+            opacity: 0.85;
+            margin-top: 4px;
+            font-weight: 400;
+        }
+
+        .header .icon {
+            font-size: 36px;
+            display: block;
+            margin-bottom: 4px;
+        }
+
+        /* 管理按钮 */
+        .manage-btn {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-60%);
+            background: rgba(255,255,255,0.2);
+            border: 1.5px solid rgba(255,255,255,0.4);
+            color: white;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            -webkit-tap-highlight-color: transparent;
+            backdrop-filter: blur(4px);
+        }
+
+        .manage-btn:active {
+            background: rgba(255,255,255,0.35);
+            transform: translateY(-60%) scale(0.95);
+        }
+
+        /* 主内容区 */
+        .main {
+            flex: 1;
+            padding: 20px 16px;
+            max-width: 500px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        /* 卡片 */
+        .card {
+            background: var(--card);
+            border-radius: var(--radius);
+            padding: 20px;
+            margin-bottom: 16px;
+            box-shadow: var(--shadow);
+        }
+
+        /* 表单 */
+        .form-group {
+            margin-bottom: 18px;
+        }
+        
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 8px;
+        }
+        
+        label .emoji {
+            margin-right: 6px;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 14px 16px;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            font-size: 15px;
+            color: var(--text);
+            background: #fafbfc;
+            transition: all 0.2s;
+            -webkit-appearance: none;
+            appearance: none;
+            outline: none;
+            font-family: inherit;
+        }
+
+        input:focus, select:focus {
+            border-color: var(--primary);
+            background: white;
+            box-shadow: 0 0 0 4px rgba(99,102,241,0.08);
+        }
+
+        input::placeholder {
+            color: #94a3b8;
+        }
+
+        select {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236366f1' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 16px center;
+            padding-right: 40px;
+        }
+
+        /* 按钮 */
+        .btn-primary {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-size: 17px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+            letter-spacing: 0.5px;
+            position: relative;
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+            font-family: inherit;
+        }
+
+        .btn-primary:active {
+            transform: scale(0.97);
+            opacity: 0.9;
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            transform: none;
+        }
+
+        .btn-primary::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(135deg, transparent 0%, rgba(255,255,255,0.15) 100%);
+        }
+
+        /* 加载动画 */
+        .loading-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .loading-overlay.show {
+            display: flex;
+        }
+
+        .loader-box {
+            background: white;
+            border-radius: 20px;
+            padding: 32px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+            max-width: 280px;
+            width: 90%;
+        }
+
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid #e0e7ff;
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loader-text {
+            font-size: 15px;
+            color: var(--text);
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .loader-sub {
+            font-size: 13px;
+            color: var(--text-secondary);
+        }
+
+        /* 提示条 */
+        .toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-120px);
+            background: white;
+            border-radius: 14px;
+            padding: 14px 24px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+            z-index: 2000;
+            font-size: 14px;
+            font-weight: 600;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            max-width: 340px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .toast.show {
+            transform: translateX(-50%) translateY(0);
+        }
+
+        .toast.success {
+            border-left: 4px solid var(--success);
+            color: #065f46;
+        }
+
+        .toast.error {
+            border-left: 4px solid var(--error);
+            color: #991b1b;
+        }
+
+        /* 结果页 */
+        .result-card {
+            display: none;
+            background: white;
+            border-radius: var(--radius);
+            padding: 24px;
+            box-shadow: var(--shadow);
+        }
+
+        .result-card.show {
+            display: block;
+            animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-icon {
+            font-size: 56px;
+            text-align: center;
+            margin-bottom: 12px;
+        }
+
+        .result-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        .result-meta {
+            background: #f8fafc;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .result-meta-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            font-size: 14px;
+        }
+
+        .result-meta-item:not(:last-child) {
+            border-bottom: 1px solid #e2e8f0;
+        }
+
+        .result-meta-item .label {
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .result-meta-item .value {
+            color: var(--text);
+            font-weight: 600;
+            text-align: right;
+            word-break: break-all;
+        }
+
+        .result-tip {
+            font-size: 13px;
+            color: var(--text-secondary);
+            text-align: center;
+            padding: 10px;
+            background: #fef3c7;
+            border-radius: 10px;
+        }
+
+        .btn-again {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: white;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            border-radius: 14px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            margin-top: 12px;
+            font-family: inherit;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-again:active {
+            background: #f5f3ff;
+        }
+
+        /* 历史记录 */
+        .history {
+            margin-top: 12px;
+        }
+
+        .history-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .history-item {
+            background: white;
+            border-radius: 12px;
+            padding: 14px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            cursor: default;
+            transition: transform 0.15s;
+        }
+
+        .history-item:active {
+            transform: scale(0.98);
+        }
+
+        .history-status {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+
+        .history-status.success {
+            background: #d1fae5;
+        }
+
+        .history-status.error {
+            background: #fee2e2;
+        }
+
+        .history-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .history-info .account {
+            font-size: 11px;
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .history-info .h-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .history-info .h-meta {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+        }
+
+        .history-time {
+            font-size: 11px;
+            color: #94a3b8;
+            flex-shrink: 0;
+            text-align: right;
+        }
+
+        /* 底部 */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #94a3b8;
+            font-size: 12px;
+        }
+
+        /* 安全区域适配 */
+        @supports (padding: env(safe-area-inset-bottom)) {
+            .main {
+                padding-bottom: calc(20px + env(safe-area-inset-bottom));
+            }
+        }
+
+        /* ===== 管理面板 ===== */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 3000;
+            justify-content: center;
+            align-items: flex-end;
+        }
+
+        .modal-overlay.show {
+            display: flex;
+        }
+
+        .modal-panel {
+            background: white;
+            border-radius: 24px 24px 0 0;
+            width: 100%;
+            max-width: 500px;
+            max-height: 85vh;
+            overflow-y: auto;
+            padding: 0;
+            animation: slideUpPanel 0.3s ease;
+        }
+
+        @keyframes slideUpPanel {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 24px 16px;
+            border-bottom: 1px solid #f1f5f9;
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 1;
+            border-radius: 24px 24px 0 0;
+        }
+
+        .modal-header h2 {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .modal-close {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background: #f1f5f9;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .modal-close:active {
+            background: #e2e8f0;
+        }
+
+        .modal-body {
+            padding: 16px 24px 32px;
+        }
+
+        /* 账号列表 */
+        .account-list {
+            margin-bottom: 20px;
+        }
+
+        .account-item {
+            display: flex;
+            align-items: center;
+            padding: 14px 16px;
+            background: #f8fafc;
+            border-radius: 14px;
+            margin-bottom: 10px;
+            gap: 14px;
+        }
+
+        .account-item .acc-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .account-item .acc-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .account-item .acc-name {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text);
+        }
+
+        .account-item .acc-appid {
+            font-size: 12px;
+            color: var(--text-secondary);
+            margin-top: 2px;
+            word-break: break-all;
+        }
+
+        .account-item .acc-delete-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            background: #fee2e2;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            -webkit-tap-highlight-color: transparent;
+            transition: all 0.15s;
+        }
+
+        .account-item .acc-delete-btn:active {
+            background: #fca5a5;
+            transform: scale(0.9);
+        }
+
+        .account-empty {
+            text-align: center;
+            padding: 32px 16px;
+            color: var(--text-secondary);
+            font-size: 14px;
+        }
+
+        .account-empty .empty-icon {
+            font-size: 48px;
+            margin-bottom: 8px;
+        }
+
+        /* 添加账号表单 */
+        .add-account-form {
+            background: #f8fafc;
+            border-radius: 16px;
+            padding: 20px;
+        }
+
+        .add-account-form h3 {
+            font-size: 15px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 16px;
+        }
+
+        .add-account-form .form-group {
+            margin-bottom: 14px;
+        }
+
+        .add-account-form label {
+            font-size: 13px;
+            margin-bottom: 6px;
+        }
+
+        .add-account-form input {
+            padding: 12px 14px;
+            font-size: 14px;
+        }
+
+        .btn-add-account {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 700;
+            cursor: pointer;
+            font-family: inherit;
+            -webkit-tap-highlight-color: transparent;
+            transition: all 0.15s;
+        }
+
+        .btn-add-account:active {
+            opacity: 0.85;
+            transform: scale(0.98);
+        }
+
+        .btn-add-account:disabled {
+            opacity: 0.5;
+        }
+
+        /* 删除确认弹窗 */
+        .confirm-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 4000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .confirm-overlay.show {
+            display: flex;
+        }
+
+        .confirm-box {
+            background: white;
+            border-radius: 20px;
+            padding: 28px 24px 20px;
+            max-width: 300px;
+            width: 85%;
+            text-align: center;
+            animation: popIn 0.2s ease;
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .confirm-box .confirm-icon {
+            font-size: 48px;
+            margin-bottom: 8px;
+        }
+
+        .confirm-box .confirm-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text);
+            margin-bottom: 6px;
+        }
+
+        .confirm-box .confirm-desc {
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+
+        .confirm-actions {
+            display: flex;
+            gap: 12px;
+        }
+
+        .confirm-actions button {
+            flex: 1;
+            padding: 12px;
+            border-radius: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            -webkit-tap-highlight-color: transparent;
+            transition: all 0.15s;
+        }
+
+        .btn-cancel {
+            background: #f1f5f9;
+            border: none;
+            color: var(--text-secondary);
+        }
+
+        .btn-cancel:active {
+            background: #e2e8f0;
+        }
+
+        .btn-confirm-del {
+            background: var(--error);
+            border: none;
+            color: white;
+        }
+
+        .btn-confirm-del:active {
+            opacity: 0.85;
+        }
+
+        /* 空状态 */
+        .empty-state {
+            text-align: center;
+            padding: 24px 16px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state .empty-icon {
+            font-size: 48px;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <!-- 顶部 -->
+    <div class="header">
+        <span class="icon">📸</span>
+        <h1>图文转公众号贴图</h1>
+        <div class="sub">抖音 · 小红书 → 一键创建草稿</div>
+        <button class="manage-btn" id="manageBtn">⚙️ 管理</button>
+    </div>
+
+    <!-- 主内容 -->
+    <div class="main">
+        <!-- 表单卡片 -->
+        <div class="card" id="formCard">
+            <div class="form-group">
+                <label><span class="emoji">🔗</span>粘贴链接</label>
+                <input 
+                    type="text" 
+                    id="url" 
+                    placeholder="抖音 / 小红书图文链接"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
+                    spellcheck="false"
+                >
+            </div>
+
+            <div class="form-group">
+                <label><span class="emoji">📱</span>选择公众号</label>
+                <select id="account">
+                    <option value="">请选择</option>
+                    {% for account in accounts %}
+                    <option value="{{ account }}">{{ account }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <button class="btn-primary" id="submitBtn">
+                🚀 一键创建贴图草稿
+            </button>
+        </div>
+
+        <!-- 结果卡片 -->
+        <div class="result-card" id="resultCard">
+            <div class="result-icon" id="resultIcon"></div>
+            <div class="result-title" id="resultTitle"></div>
+            <div class="result-meta" id="resultMeta"></div>
+            <div class="result-tip" id="resultTip"></div>
+            <button class="btn-again" id="btnAgain">🔄 再发一篇</button>
+        </div>
+
+        <!-- 历史记录 -->
+        <div class="history" id="history">
+            <div class="history-title">📋 最近记录</div>
+            <div id="historyList"></div>
+        </div>
+    </div>
+
+    <!-- 管理面板 -->
+    <div class="modal-overlay" id="manageModal">
+        <div class="modal-panel">
+            <div class="modal-header">
+                <h2>⚙️ 公众号管理</h2>
+                <button class="modal-close" id="closeModalBtn">✕</button>
+            </div>
+            <div class="modal-body">
+                <!-- 账号列表 -->
+                <div class="account-list" id="accountList"></div>
+
+                <!-- 添加账号表单 -->
+                <div class="add-account-form">
+                    <h3>➕ 添加新公众号</h3>
+                    <div class="form-group">
+                        <label>公众号名称</label>
+                        <input type="text" id="newAccName" placeholder="例如：潮宠社">
+                    </div>
+                    <div class="form-group">
+                        <label>AppID</label>
+                        <input type="text" id="newAccAppId" placeholder="wx开头的AppID" autocapitalize="off" autocorrect="off" spellcheck="false">
+                    </div>
+                    <div class="form-group">
+                        <label>AppSecret</label>
+                        <input type="password" id="newAccAppSecret" placeholder="AppSecret密钥">
+                    </div>
+                    <button class="btn-add-account" id="btnAddAccount">✅ 添加公众号</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 删除确认弹窗 -->
+    <div class="confirm-overlay" id="confirmDelModal">
+        <div class="confirm-box">
+            <div class="confirm-icon">⚠️</div>
+            <div class="confirm-title">确认删除？</div>
+            <div class="confirm-desc" id="confirmDelDesc">删除后无法恢复，确定要删除该公众号吗？</div>
+            <div class="confirm-actions">
+                <button class="btn-cancel" id="cancelDelBtn">取消</button>
+                <button class="btn-confirm-del" id="confirmDelBtn">确认删除</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 加载遮罩 -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loader-box">
+            <div class="spinner"></div>
+            <div class="loader-text">正在处理中...</div>
+            <div class="loader-sub">请稍候，约需1-2分钟</div>
+        </div>
+    </div>
+
+    <!-- 提示条 -->
+    <div class="toast" id="toast"></div>
+
+    <!-- 底部 -->
+    <div class="footer">SOCIAL → WECHAT DRAFT</div>
+
+    <script>
+        const $ = (id) => document.getElementById(id);
+        const formCard = $('formCard');
+        const resultCard = $('resultCard');
+        const submitBtn = $('submitBtn');
+        const loadingOverlay = $('loadingOverlay');
+        const historyList = $('historyList');
+        const toast = $('toast');
+
+        let currentAccounts = {{ safe_accounts | tojson }};
+        let pendingDeleteName = null;
+
+        // ==================== 工具函数 ====================
+
+        function showToast(msg, type) {
+            toast.textContent = (type === 'success' ? '✅ ' : '❌ ') + msg;
+            toast.className = 'toast ' + type + ' show';
+            clearTimeout(toast._timer);
+            toast._timer = setTimeout(() => {
+                toast.classList.remove('show');
+            }, 3000);
+        }
+
+        function timeAgo(ts) {
+            const sec = Math.floor((Date.now() - ts) / 1000);
+            if (sec < 60) return '刚刚';
+            if (sec < 3600) return Math.floor(sec / 60) + '分钟前';
+            if (sec < 86400) return Math.floor(sec / 3600) + '小时前';
+            return Math.floor(sec / 86400) + '天前';
+        }
+
+        // ==================== 历史记录 ====================
+
+        let history = JSON.parse(localStorage.getItem('tietu_history') || '[]');
+
+        function saveHistory(entry) {
+            history.unshift({
+                ...entry,
+                time: Date.now()
+            });
+            if (history.length > 20) history = history.slice(0, 20);
+            localStorage.setItem('tietu_history', JSON.stringify(history));
+            renderHistory();
+        }
+
+        function renderHistory() {
+            if (history.length === 0) {
+                $('history').style.display = 'none';
+                return;
+            }
+            $('history').style.display = 'block';
+            historyList.innerHTML = history.slice(0, 5).map(h => `
+                <div class="history-item">
+                    <div class="history-status ${h.status}">
+                        ${h.status === 'success' ? '✅' : '❌'}
+                    </div>
+                    <div class="history-info">
+                        <div class="account">${h.account}</div>
+                        <div class="h-title">${h.title || '处理失败'}</div>
+                        <div class="h-meta">${h.imageCount ? h.imageCount + '张图' : ''} ${h.mediaId ? '· ' + h.mediaId.slice(0, 16) + '...' : ''}</div>
+                    </div>
+                    <div class="history-time">${timeAgo(h.time)}</div>
+                </div>
+            `).join('');
+        }
+
+        // ==================== 结果展示 ====================
+
+        function showResult(status, data) {
+            formCard.style.display = 'none';
+            resultCard.classList.add('show');
+
+            if (status === 'success') {
+                $('resultIcon').textContent = '🎉';
+                $('resultTitle').textContent = '贴图草稿创建成功！';
+                $('resultMeta').innerHTML = `
+                    <div class="result-meta-item">
+                        <span class="label">标题</span>
+                        <span class="value">${data.title || '-'}</span>
+                    </div>
+                    <div class="result-meta-item">
+                        <span class="label">图片数</span>
+                        <span class="value">${data.image_count || 0} 张</span>
+                    </div>
+                    <div class="result-meta-item">
+                        <span class="label">media_id</span>
+                        <span class="value" style="font-size:12px">${data.media_id || '-'}</span>
+                    </div>
+                `;
+                $('resultTip').innerHTML = '💡 请打开公众号后台 → 草稿箱 查看';
+                
+                saveHistory({
+                    status: 'success',
+                    account: document.getElementById('account').value,
+                    title: data.title,
+                    imageCount: data.image_count,
+                    mediaId: data.media_id
+                });
+            } else {
+                $('resultIcon').textContent = '😢';
+                $('resultTitle').textContent = '创建失败';
+                $('resultMeta').innerHTML = `
+                    <div class="result-meta-item">
+                        <span class="label">错误信息</span>
+                        <span class="value" style="color:var(--error)">${data.message || '未知错误'}</span>
+                    </div>
+                `;
+                $('resultTip').innerHTML = '💡 请检查链接是否正确，或稍后重试';
+                
+                saveHistory({
+                    status: 'error',
+                    account: document.getElementById('account').value,
+                    title: data.message || '处理失败',
+                    imageCount: 0,
+                    mediaId: ''
+                });
+            }
+        }
+
+        function resetForm() {
+            formCard.style.display = 'block';
+            resultCard.classList.remove('show');
+            document.getElementById('url').value = '';
+        }
+
+        // ==================== 表单提交 ====================
+
+        submitBtn.addEventListener('click', async () => {
+            const url = document.getElementById('url').value.trim();
+            const account = document.getElementById('account').value;
+
+            if (!url) {
+                showToast('请粘贴抖音或小红书链接', 'error');
+                document.getElementById('url').focus();
+                return;
+            }
+
+            if (!account) {
+                showToast('请选择公众号', 'error');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            loadingOverlay.classList.add('show');
+            resultCard.classList.remove('show');
+
+            try {
+                const resp = await fetch('/api/create-draft', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url, account })
+                });
+
+                const data = await resp.json();
+
+                loadingOverlay.classList.remove('show');
+                submitBtn.disabled = false;
+
+                if (data.status === 'success') {
+                    showResult('success', data);
+                    showToast('创建成功！去后台草稿箱查看', 'success');
+                } else {
+                    showResult('error', data);
+                    showToast(data.message || '创建失败', 'error');
+                }
+            } catch (err) {
+                loadingOverlay.classList.remove('show');
+                submitBtn.disabled = false;
+                showResult('error', { message: '网络错误：' + err.message });
+                showToast('网络连接失败', 'error');
+            }
+        });
+
+        $('btnAgain').addEventListener('click', resetForm);
+
+        document.getElementById('url').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') submitBtn.click();
+        });
+
+        // ==================== 账号管理 ====================
+
+        function renderAccountList() {
+            const list = $('accountList');
+            if (currentAccounts.length === 0) {
+                list.innerHTML = `
+                    <div class="account-empty">
+                        <div class="empty-icon">📭</div>
+                        暂无公众号，请添加
+                    </div>
+                `;
+                return;
+            }
+            list.innerHTML = currentAccounts.map(acc => `
+                <div class="account-item" data-name="${acc.name}">
+                    <div class="acc-icon">📱</div>
+                    <div class="acc-info">
+                        <div class="acc-name">${acc.name}</div>
+                        <div class="acc-appid">${acc.app_id}</div>
+                    </div>
+                    <button class="acc-delete-btn" onclick="showDeleteConfirm('${acc.name.replace(/'/g, "\\'")}')" title="删除">🗑️</button>
+                </div>
+            `).join('');
+        }
+
+        function openManageModal() {
+            renderAccountList();
+            $('manageModal').classList.add('show');
+            // 刷新账号列表
+            refreshAccounts();
+        }
+
+        function closeManageModal() {
+            $('manageModal').classList.remove('show');
+            // 刷新主页的select
+            refreshAccountSelect();
+        }
+
+        async function refreshAccounts() {
+            try {
+                const resp = await fetch('/api/accounts');
+                const data = await resp.json();
+                currentAccounts = data.accounts || [];
+                renderAccountList();
+            } catch (e) {
+                showToast('获取公众号列表失败', 'error');
+            }
+        }
+
+        function refreshAccountSelect() {
+            const select = document.getElementById('account');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">请选择</option>'
+                + currentAccounts.map(acc => `<option value="${acc.name}">${acc.name}</option>`).join('');
+            // 尝试保持之前的选择
+            if ([...select.options].some(o => o.value === currentVal)) {
+                select.value = currentVal;
+            }
+        }
+
+        // 显示删除确认
+        function showDeleteConfirm(name) {
+            pendingDeleteName = name;
+            $('confirmDelDesc').textContent = `确定要删除公众号"${name}"吗？\n删除后无法恢复！`;
+            $('confirmDelModal').classList.add('show');
+        }
+
+        function hideDeleteConfirm() {
+            pendingDeleteName = null;
+            $('confirmDelModal').classList.remove('show');
+        }
+
+        // 确认删除
+        $('confirmDelBtn').addEventListener('click', async () => {
+            if (!pendingDeleteName) return;
+            const name = pendingDeleteName;
+            hideDeleteConfirm();
+
+            try {
+                const resp = await fetch('/api/accounts/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name })
+                });
+                const data = await resp.json();
+                if (data.status === 'success') {
+                    showToast(`"${name}"已删除`, 'success');
+                    refreshAccounts();
+                    refreshAccountSelect();
+                } else {
+                    showToast(data.message || '删除失败', 'error');
+                }
+            } catch (e) {
+                showToast('删除失败：' + e.message, 'error');
+            }
+        });
+
+        $('cancelDelBtn').addEventListener('click', hideDeleteConfirm);
+        $('confirmDelModal').addEventListener('click', (e) => {
+            if (e.target === $('confirmDelModal')) hideDeleteConfirm();
+        });
+
+        // 添加公众号
+        $('btnAddAccount').addEventListener('click', async () => {
+            const name = $('newAccName').value.trim();
+            const app_id = $('newAccAppId').value.trim();
+            const app_secret = $('newAccAppSecret').value.trim();
+
+            if (!name) { showToast('请输入公众号名称', 'error'); return; }
+            if (!app_id) { showToast('请输入AppID', 'error'); return; }
+            if (!app_id.startsWith('wx')) { showToast('AppID必须以wx开头', 'error'); return; }
+            if (!app_secret) { showToast('请输入AppSecret', 'error'); return; }
+
+            $('btnAddAccount').disabled = true;
+            $('btnAddAccount').textContent = '⏳ 验证中...';
+
+            try {
+                const resp = await fetch('/api/accounts/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, app_id, app_secret })
+                });
+                const data = await resp.json();
+
+                if (data.status === 'success') {
+                    showToast(`"${name}"添加成功！`, 'success');
+                    $('newAccName').value = '';
+                    $('newAccAppId').value = '';
+                    $('newAccAppSecret').value = '';
+                    refreshAccounts();
+                    refreshAccountSelect();
+                } else {
+                    showToast(data.message || '添加失败', 'error');
+                }
+            } catch (e) {
+                showToast('添加失败：' + e.message, 'error');
+            } finally {
+                $('btnAddAccount').disabled = false;
+                $('btnAddAccount').textContent = '✅ 添加公众号';
+            }
+        });
+
+        // 管理面板事件
+        $('manageBtn').addEventListener('click', openManageModal);
+        $('closeModalBtn').addEventListener('click', closeManageModal);
+        $('manageModal').addEventListener('click', (e) => {
+            if (e.target === $('manageModal')) closeManageModal();
+        });
+
+        // ==================== 初始化 ====================
+
+        renderHistory();
+
+        const lastAccount = localStorage.getItem('tietu_last_account');
+        if (lastAccount) {
+            document.getElementById('account').value = lastAccount;
+        }
+        document.getElementById('account').addEventListener('change', (e) => {
+            localStorage.setItem('tietu_last_account', e.target.value);
+        });
+    </script>
+</body>
+</html>
