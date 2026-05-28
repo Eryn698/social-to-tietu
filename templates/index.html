@@ -1,702 +1,673 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>图文转贴图</title>
-  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
-  <script src="https://unpkg.com/axios/dist/axios.min.js"></script>
-  <style>
-    *{margin:0;padding:0;box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(135deg,#0f0c29,#302b63,#24243e);color:#e0e0e0;min-height:100vh}
-    .app{max-width:720px;margin:0 auto;min-height:100vh}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#6366f1">
+    <title>图文转贴图</title>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-dark: #4f46e5;
+            --primary-light: #e0e7ff;
+            --success: #10b981;
+            --error: #ef4444;
+            --warning: #f59e0b;
+            --bg: #f5f3ff;
+            --card: #ffffff;
+            --text: #1e293b;
+            --text-sec: #64748b;
+            --border: #e2e8f0;
+            --radius: 16px;
+            --shadow: 0 4px 24px rgba(99,102,241,0.12);
+        }
+        *{margin:0;padding:0;box-sizing:border-box}
+        body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);min-height:100vh;display:flex;flex-direction:column;-webkit-font-smoothing:antialiased;user-select:none}
 
-    /* Login Overlay */
-    .login-overlay{position:fixed;inset:0;background:rgba(9,5,33,.97);z-index:999;display:flex;align-items:center;justify-content:center}
-    .login-box{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:40px 32px;width:340px;backdrop-filter:blur(10px)}
-    .login-box h2{text-align:center;font-size:22px;margin-bottom:8px;background:linear-gradient(135deg,#a78bfa,#f0abfc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-    .login-box .sub{text-align:center;font-size:13px;color:rgba(255,255,255,.4);margin-bottom:28px}
-    .login-box input{width:100%;padding:14px 16px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.05);color:#e0e0e0;font-size:15px;outline:none;margin-bottom:16px}
-    .login-box input:focus{border-color:rgba(167,139,250,.5);box-shadow:0 0 0 3px rgba(167,139,250,.1)}
-    .login-box .btn{width:100%;padding:14px;border:none;border-radius:12px;font-size:15px;font-weight:600;cursor:pointer;transition:.2s}
-    .btn-primary{background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff}
-    .btn-primary:hover{filter:brightness(1.15)}
-    .login-err{color:#f87171;text-align:center;font-size:13px;margin-top:8px}
+        /* Header */
+        .header{background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;padding:16px 20px 0;text-align:center;border-radius:0 0 24px 24px;box-shadow:0 4px 20px rgba(99,102,241,0.3)}
+        .header h1{font-size:18px;font-weight:700}
 
-    /* Header */
-    .header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px}
-    .header h1{font-size:20px;background:linear-gradient(135deg,#a78bfa,#f0abfc);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
-    .header-btns{display:flex;gap:8px}
-    .icon-btn{width:38px;height:38px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;color:rgba(255,255,255,.6);transition:.2s}
-    .icon-btn:hover{background:rgba(167,139,250,.1);border-color:rgba(167,139,250,.3);color:#a78bfa}
+        /* Tabs */
+        .tabs{display:flex;background:linear-gradient(135deg,#6366f1,#8b5cf6);padding:0 16px;gap:4px}
+        .tab{flex:1;padding:10px 0;text-align:center;font-size:13px;font-weight:600;color:rgba(255,255,255,0.65);cursor:pointer;border-radius:10px 10px 0 0;transition:all .2s}
+        .tab.active{color:#fff;background:var(--card);box-shadow:0 -2px 8px rgba(0,0,0,0.05)}
+        .tab-panel{display:none;flex:1;padding:20px 16px;max-width:500px;margin:0 auto;width:100%}
+        .tab-panel.active{display:block}
 
-    /* Tabs */
-    .tabs{display:flex;gap:0;padding:0 16px;margin-bottom:20px}
-    .tab{flex:1;text-align:center;padding:12px 0;font-size:14px;font-weight:500;cursor:pointer;border-radius:12px 12px 0 0;transition:.25s;color:rgba(255,255,255,.45);border-bottom:2px solid transparent}
-    .tab.active{color:#a78bfa;border-bottom-color:#a78bfa;font-weight:600}
-    .tab:hover{color:rgba(255,255,255,.7)}
+        /* Card */
+        .card{background:var(--card);border-radius:var(--radius);padding:20px;margin-bottom:16px;box-shadow:var(--shadow)}
 
-    /* Panels */
-    .panel{padding:0 16px 100px}
+        /* Form */
+        .fg{margin-bottom:16px}
+        .fg label{display:block;font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px}
+        .fg input,.fg select,.fg textarea{width:100%;padding:12px 14px;border:2px solid var(--border);border-radius:10px;font-size:15px;color:var(--text);background:#fafbfc;transition:all .2s;-webkit-appearance:none;appearance:none;outline:none;font-family:inherit}
+        .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:var(--primary);background:#fff;box-shadow:0 0 0 3px rgba(99,102,241,0.08)}
+        .fg textarea{min-height:100px;resize:vertical}
+        .fg input::placeholder{color:#94a3b8}
+        .fg select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236366f1' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:36px}
 
-    /* Cards */
-    .card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:20px;margin-bottom:14px}
-    .card-row{display:flex;gap:10px}
+        /* Style picker */
+        .style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+        .style-item{padding:10px;text-align:center;border:2px solid var(--border);border-radius:10px;font-size:13px;font-weight:600;cursor:pointer;transition:all .2s;color:var(--text-sec)}
+        .style-item.active{border-color:var(--primary);color:var(--primary);background:var(--primary-light)}
 
-    /* Input */
-    .input{flex:1;padding:13px 16px;border:1px solid rgba(255,255,255,.1);border-radius:12px;background:rgba(255,255,255,.05);color:#e0e0e0;font-size:14px;outline:none}
-    .input:focus{border-color:rgba(167,139,250,.4);box-shadow:0 0 0 3px rgba(167,139,250,.08)}
-    .input::placeholder{color:rgba(255,255,255,.25)}
-    textarea.input{resize:vertical;min-height:100px;line-height:1.6}
+        /* Buttons */
+        .btn-primary{display:block;width:100%;padding:14px;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;border:none;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s;letter-spacing:.5px;font-family:inherit}
+        .btn-primary:active{transform:scale(0.97);opacity:0.9}
+        .btn-primary:disabled{opacity:0.5;transform:none}
+        .btn-outline{display:block;width:100%;padding:12px;background:#fff;color:var(--primary);border:2px solid var(--primary);border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit;margin-top:10px}
+        .btn-outline:active{background:var(--primary-light)}
+        .btn-sm{padding:8px 16px;font-size:13px;border-radius:8px;border:2px solid var(--border);background:#fff;color:var(--text-sec);cursor:pointer;font-family:inherit;font-weight:600;transition:all .2s}
+        .btn-sm:hover{border-color:var(--primary);color:var(--primary)}
+        .btn-sm.active{border-color:var(--primary);color:var(--primary);background:var(--primary-light)}
 
-    /* Buttons */
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:12px 20px;border-radius:12px;font-size:14px;font-weight:600;cursor:pointer;transition:.2s;border:none;white-space:nowrap}
-    .btn:disabled{opacity:.5;cursor:not-allowed}
-    .btn-purple{background:linear-gradient(135deg,#7c3aed,#a78bfa);color:#fff}
-    .btn-purple:hover:not(:disabled){filter:brightness(1.15);transform:translateY(-1px)}
-    .btn-green{background:linear-gradient(135deg,#10b981,#34d399);color:#fff}
-    .btn-green:hover:not(:disabled){filter:brightness(1.15)}
-    .btn-orange{background:linear-gradient(135deg,#f59e0b,#fbbf24);color:#fff}
-    .btn-blue{background:linear-gradient(135deg,#3b82f6,#60a5fa);color:#fff}
-    .btn-ghost{border:1px solid rgba(255,255,255,.15);background:rgba(255,255,255,.04);color:rgba(255,255,255,.7)}
-    .btn-ghost:hover{border-color:rgba(167,139,250,.4);color:#a78bfa}
-    .btn-sm{padding:8px 14px;font-size:12px;border-radius:8px}
-    .btn-block{width:100%}
+        /* Settings button */
+        .header-actions{position:absolute;right:16px;top:14px;display:flex;gap:8px}
+        .icon-btn{background:rgba(255,255,255,0.15);border:none;color:#fff;width:36px;height:36px;border-radius:10px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+        .header{position:relative}
 
-    /* Select */
-    .select{padding:10px 14px;border:1px solid rgba(255,255,255,.1);border-radius:10px;background:rgba(255,255,255,.05);color:#e0e0e0;font-size:13px;outline:none;cursor:pointer}
-    .select:focus{border-color:rgba(167,139,250,.4)}
+        /* Modal */
+        .modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:100;justify-content:center;align-items:center}
+        .modal-bg.show{display:flex}
+        .modal{background:#fff;border-radius:20px;padding:24px;width:90%;max-width:380px;max-height:80vh;overflow-y:auto}
+        .modal h2{font-size:18px;margin-bottom:16px;color:var(--text)}
+        .modal .fg:last-of-type{margin-bottom:20px}
+        .modal .btn-primary{margin-top:0}
+        .modal-close{position:absolute;right:16px;top:16px;background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-sec)}
+        .modal{position:relative}
 
-    /* Labels */
-    .label{font-size:13px;color:rgba(255,255,255,.5);margin-bottom:6px;display:block}
-    .label-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
-    .label-row .label{margin-bottom:0}
+        /* Loading */
+        .loading-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);z-index:1000;justify-content:center;align-items:center;flex-direction:column}
+        .loading-overlay.show{display:flex}
+        .loader-box{background:#fff;border-radius:20px;padding:32px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.2);max-width:280px;width:90%}
+        .spinner{width:48px;height:48px;border:4px solid #e0e7ff;border-top:4px solid var(--primary);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 16px}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        .loader-text{font-size:15px;color:var(--text);font-weight:600;margin-bottom:4px}
+        .loader-sub{font-size:13px;color:var(--text-sec)}
 
-    /* Image grid */
-    .img-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:12px}
-    .img-grid img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;background:rgba(255,255,255,.03)}
-    .img-count{font-size:12px;color:rgba(255,255,255,.35);margin-top:6px}
+        /* Toast */
+        .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%) translateY(-120px);background:#fff;border-radius:14px;padding:14px 24px;box-shadow:0 8px 32px rgba(0,0,0,0.15);z-index:2000;font-size:14px;font-weight:600;transition:transform .3s cubic-bezier(0.4,0,0.2,1);max-width:340px;text-align:center}
+        .toast.show{transform:translateX(-50%) translateY(0)}
+        .toast.success{border-left:4px solid var(--success);color:#065f46}
+        .toast.error{border-left:4px solid var(--error);color:#991b1b}
 
-    /* Content display */
-    .content-box{background:rgba(167,139,250,.05);border-radius:12px;padding:16px;border-left:3px solid #7c3aed;white-space:pre-wrap;line-height:1.8;font-size:14px;word-break:break-word}
-    .content-box.rewritten{border-left-color:#10b981;background:rgba(16,185,129,.05)}
+        /* Result */
+        .result-card{display:none;background:#fff;border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);animation:slideUp .3s ease}
+        .result-card.show{display:block}
+        @keyframes slideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+        .result-icon{font-size:48px;text-align:center;margin-bottom:8px}
+        .result-title{font-size:16px;font-weight:700;color:var(--text);text-align:center;margin-bottom:16px}
+        .result-meta{background:#f8fafc;border-radius:12px;padding:16px;margin-bottom:16px}
+        .result-meta-item{display:flex;justify-content:space-between;padding:8px 0;font-size:13px}
+        .result-meta-item:not(:last-child){border-bottom:1px solid #e2e8f0}
+        .result-meta-item .label{color:var(--text-sec);font-weight:500}
+        .result-meta-item .value{color:var(--text);font-weight:600;text-align:right;word-break:break-all;max-width:60%}
+        .result-tip{font-size:13px;color:var(--text-sec);text-align:center;padding:10px;background:#fef3c7;border-radius:10px}
 
-    /* Toast */
-    .toast{position:fixed;top:20px;left:50%;transform:translateX(-50%);padding:12px 24px;border-radius:12px;font-size:14px;font-weight:500;z-index:1000;transition:.3s;backdrop-filter:blur(10px)}
-    .toast-success{background:rgba(16,185,129,.9);color:#fff}
-    .toast-error{background:rgba(239,68,68,.9);color:#fff}
-    .toast-info{background:rgba(59,130,246,.9);color:#fff}
+        /* Preview */
+        .preview-box{background:#f8fafc;border-radius:12px;padding:14px;margin-top:12px;max-height:200px;overflow-y:auto;font-size:13px;line-height:1.6;color:var(--text);white-space:pre-wrap;word-break:break-word}
 
-    /* Loading */
-    .loading{display:flex;align-items:center;justify-content:center;padding:40px;color:rgba(255,255,255,.4)}
-    .spinner{width:24px;height:24px;border:2px solid rgba(167,139,250,.2);border-top-color:#a78bfa;border-radius:50%;animation:spin .8s linear infinite;margin-right:10px}
-    @keyframes spin{to{transform:rotate(360deg)}}
+        /* Article preview */
+        .article-preview{background:#f8fafc;border-radius:12px;padding:16px;margin-bottom:16px;max-height:300px;overflow-y:auto;font-size:14px;line-height:1.8}
+        .article-preview h1{font-size:18px;font-weight:700;margin-bottom:8px}
+        .article-preview h2{font-size:16px;font-weight:600;margin:12px 0 6px}
+        .article-preview p{margin-bottom:8px;color:var(--text)}
 
-    /* Modal */
-    .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:990;display:flex;align-items:center;justify-content:center}
-    .modal{background:#1e1b3a;border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:28px;width:90%;max-width:420px;max-height:80vh;overflow-y:auto}
-    .modal h3{font-size:18px;margin-bottom:20px;color:#a78bfa}
-    .modal .btn-row{display:flex;gap:10px;margin-top:20px}
+        /* History */
+        .history{margin-top:12px}
+        .history-title{font-size:14px;font-weight:600;color:var(--text-sec);margin-bottom:8px}
+        .history-item{background:#fff;border-radius:12px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;box-shadow:0 1px 3px rgba(0,0,0,0.05)}
+        .history-status{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+        .history-status.success{background:#d1fae5}
+        .history-status.error{background:#fee2e2}
+        .history-info{flex:1;min-width:0}
+        .history-info .h-account{font-size:11px;color:var(--primary);font-weight:600}
+        .history-info .h-title{font-size:13px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+        .history-info .h-meta{font-size:11px;color:var(--text-sec);margin-top:2px}
+        .history-time{font-size:11px;color:#94a3b8;flex-shrink:0}
 
-    /* Article preview */
-    .article-preview{line-height:1.9;font-size:14px}
-    .article-preview h1,.article-preview h2{color:#a78bfa;margin:16px 0 8px}
-    .article-preview h3{color:#f0abfc;margin:12px 0 6px}
-    .article-preview p{margin:8px 0}
-    .article-preview strong{color:#fbbf24}
-
-    /* Progress */
-    .progress{display:flex;gap:6px;flex-wrap:wrap;padding:12px 0}
-    .step{font-size:12px;padding:6px 12px;border-radius:8px;background:rgba(255,255,255,.04);color:rgba(255,255,255,.3)}
-    .step.done{background:rgba(16,185,129,.15);color:#34d399}
-    .step.active{background:rgba(167,139,250,.15);color:#a78bfa;animation:pulse 1.5s infinite}
-    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-
-    /* Responsive */
-    @media(max-width:400px){.card-row{flex-direction:column}}
-  </style>
+        /* Footer */
+        .footer{text-align:center;padding:16px;color:#94a3b8;font-size:12px}
+        @supports(padding:env(safe-area-inset-bottom)){.tab-panel{padding-bottom:calc(20px + env(safe-area-inset-bottom))}}
+    </style>
 </head>
 <body>
-<div id="app">
-  <!-- Login Overlay -->
-  <div class="login-overlay" v-if="!loggedIn">
-    <div class="login-box">
-      <h2>🔐 图文转贴图</h2>
-      <p class="sub">请输入密码登录</p>
-      <input v-model="loginPassword" type="password" placeholder="登录密码" @keyup.enter="doLogin">
-      <button class="btn btn-primary" @click="doLogin" :disabled="loggingIn">
-        {{ loggingIn ? '登录中...' : '登录' }}
-      </button>
-      <p class="login-err" v-if="loginErr">{{ loginErr }}</p>
-      <p style="text-align:center;font-size:11px;color:rgba(255,255,255,.2);margin-top:20px">默认密码: admin123</p>
-    </div>
-  </div>
-
-  <!-- Main App -->
-  <div v-if="loggedIn">
-    <!-- Header -->
     <div class="header">
-      <h1>📱 图文转贴图</h1>
-      <div class="header-btns">
-        <button class="icon-btn" title="设置" @click="showSettings=true">⚙️</button>
-      </div>
+        <h1>图文转贴图</h1>
+        <div class="header-actions">
+            <button class="icon-btn" onclick="openSettings()" title="Settings">&#9881;</button>
+        </div>
     </div>
 
-    <!-- Tabs -->
     <div class="tabs">
-      <div class="tab" :class="{active:tab==='tietu'}" @click="tab='tietu'">📸 贴图</div>
-      <div class="tab" :class="{active:tab==='rewrite'}" @click="tab='rewrite'">✨ 二创</div>
-      <div class="tab" :class="{active:tab==='article'}" @click="tab='article'">✍️ 写文章</div>
+        <div class="tab active" onclick="switchTab(0)">&#128247; 贴图</div>
+        <div class="tab" onclick="switchTab(1)">&#10024; 二创</div>
+        <div class="tab" onclick="switchTab(2)">&#9997; 写文章</div>
     </div>
 
-    <!-- ============ Tab 1: 贴图 ============ -->
-    <div class="panel" v-if="tab==='tietu'">
-      <div class="card">
-        <div class="card-row">
-          <select class="select" v-model="tietuAccount" style="min-width:100px">
-            <option value="">选择公众号</option>
-            <option v-for="a in accounts" :value="a.name">{{ a.name }}</option>
-          </select>
-          <input class="input" v-model="tietuUrl" placeholder="粘贴小红书/抖音链接">
-          <button class="btn btn-purple" @click="doCreateTietu" :disabled="creatingTietu">
-            {{ creatingTietu ? '处理中...' : '创建' }}
-          </button>
-        </div>
-      </div>
-      <div v-if="tietuResult" class="card" style="border-left:3px solid #10b981">
-        <div class="label">✅ 创建成功</div>
-        <p style="font-size:14px;margin:6px 0"><strong>{{ tietuResult.title }}</strong></p>
-        <p style="font-size:13px;color:rgba(255,255,255,.5)">{{ tietuResult.image_count }}张图片 · media_id: {{ tietuResult.media_id?.substring(0,20) }}...</p>
-      </div>
-    </div>
-
-    <!-- ============ Tab 2: 二创 ============ -->
-    <div class="panel" v-if="tab==='rewrite'">
-      <!-- Step 1: 解析链接 -->
-      <div class="card">
-        <div class="label">粘贴小红书/抖音链接，先解析再二创</div>
-        <div class="card-row">
-          <input class="input" v-model="rewriteUrl" placeholder="粘贴链接...">
-          <button class="btn btn-purple" @click="doParse" :disabled="parsing">
-            {{ parsing ? '解析中...' : '解析' }}
-          </button>
-        </div>
-        <!-- Parsed content -->
-        <div v-if="parsedData" style="margin-top:16px">
-          <p style="font-size:14px;margin-bottom:4px"><strong>📝 {{ parsedData.title }}</strong></p>
-          <p style="font-size:12px;color:rgba(255,255,255,.4)">作者: {{ parsedData.author || '未知' }} · {{ parsedData.image_count }}张图片</p>
-          <div class="content-box" style="margin-top:12px;max-height:200px;overflow-y:auto">
-            {{ parsedData.desc || parsedData.title }}
-          </div>
-          <!-- Rewrite options -->
-          <div style="margin-top:14px">
-            <div class="label">改写风格</div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button v-for="s in rewriteStyles" :key="s.key" 
-                :class="rewriteStyle===s.key?'btn btn-purple btn-sm':'btn btn-ghost btn-sm'"
-                @click="rewriteStyle=s.key">{{ s.label }}</button>
+    <!-- Tab 0: 贴图 -->
+    <div class="tab-panel active" id="panel-0">
+        <div class="card" id="tietu-form">
+            <div class="fg">
+                <label>&#128279; 粘贴链接</label>
+                <input type="text" id="tietu-url" placeholder="抖音 / 小红书图文链接" autocomplete="off" spellcheck="false">
             </div>
-          </div>
-          <button class="btn btn-green btn-block" style="margin-top:12px" @click="doRewrite" :disabled="rewriting">
-            {{ rewriting ? '改写中...' : '✨ AI二创改写' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Step 2: Rewrite result -->
-      <div v-if="rewrittenText" class="card">
-        <div class="label-row"><span class="label">改写结果</span><span style="font-size:12px;color:rgba(255,255,255,.3)">风格: {{ rewriteStyle }}</span></div>
-        <div class="content-box rewritten">{{ rewrittenText }}</div>
-
-        <!-- Image generation -->
-        <div style="margin-top:14px">
-          <div class="label">生成封面配图 (可选)</div>
-          <div class="card-row">
-            <input class="input" v-model="imagePrompt" :placeholder="'图片描述，如：' + (parsedData?.title || '简约风格')">
-            <button class="btn btn-orange" @click="doGenImage" :disabled="generatingImage">
-              {{ generatingImage ? '生成中...' : '生图' }}
-            </button>
-          </div>
-        </div>
-        <img v-if="generatedImage" :src="generatedImage" style="width:100%;max-width:300px;border-radius:12px;margin-top:12px">
-
-        <!-- Publish to WeChat -->
-        <div style="margin-top:14px">
-          <div class="label">发布到公众号</div>
-          <div class="card-row">
-            <select class="select" v-model="rewriteAccount">
-              <option value="">选择公众号</option>
-              <option v-for="a in accounts" :value="a.name">{{ a.name }}</option>
-            </select>
-            <button class="btn btn-green" @click="doPublishRewrite" :disabled="publishingRewrite">
-              {{ publishingRewrite ? '发布中...' : '🚀 创建草稿' }}
-            </button>
-          </div>
-        </div>
-        <div v-if="rewriteDraftResult" style="margin-top:8px;padding:12px;background:rgba(16,185,129,.1);border-radius:10px;font-size:13px">
-          ✅ 草稿已创建 · {{ rewriteDraftResult.image_count }}张 · {{ rewriteDraftResult.media_id?.substring(0,15)}}...
-        </div>
-      </div>
-    </div>
-
-    <!-- ============ Tab 3: 写文章 ============ -->
-    <div class="panel" v-if="tab==='article'">
-      <!-- Input -->
-      <div class="card">
-        <div class="label">AI帮你写一篇公众号文章</div>
-        <input class="input" v-model="articleTopic" placeholder="文章主题，如：春天养花的5个小技巧" style="margin-bottom:10px">
-        <div class="card-row">
-          <select class="select" v-model="articleStyle">
-            <option value="通用">通用风格</option>
-            <option value="宠物">宠物类</option>
-            <option value="花艺">花艺类</option>
-            <option value="科技">科技类</option>
-            <option value="生活">生活类</option>
-          </select>
-          <button class="btn btn-purple" style="flex:1" @click="doWriteArticle" :disabled="writingArticle">
-            {{ writingArticle ? '写作中...' : '✍️ AI写文章' }}
-          </button>
-        </div>
-      </div>
-
-      <!-- Article Preview -->
-      <div v-if="articleContent" class="card">
-        <div class="label-row">
-          <span class="label" style="font-size:16px;color:#a78bfa">📄 {{ articleTitle }}</span>
-          <span style="font-size:12px;color:rgba(255,255,255,.3)">{{ articleStyle }}风格</span>
-        </div>
-        <div class="content-box article-preview" v-html="renderMarkdown(articleContent)" style="max-height:400px;overflow-y:auto"></div>
-
-        <!-- Actions -->
-        <div style="margin-top:16px">
-          <div class="label">AI生成封面图 (自动根据标题)</div>
-          <div class="card-row" style="margin-bottom:10px">
-            <select class="select" v-model="articleAccount" style="flex:1">
-              <option value="">选择发布公众号</option>
-              <option v-for="a in accounts" :value="a.name">{{ a.name }}</option>
-            </select>
-          </div>
-          <button class="btn btn-green btn-block" @click="doCreateArticleDraft" :disabled="creatingArticleDraft">
-            {{ creatingArticleDraft ? '处理中...' : '🎨 生成封面 → 创建草稿' }}
-          </button>
-          <div v-if="creatingArticleDraft" style="margin-top:8px">
-            <div class="progress">
-              <span class="step active">🎨 生成封面</span>
-              <span class="step">📤 上传微信</span>
-              <span class="step">📝 创建草稿</span>
+            <div class="fg">
+                <label>&#128241; 选择公众号</label>
+                <select id="tietu-account"></select>
             </div>
-          </div>
+            <button class="btn-primary" id="tietu-btn" onclick="doTietu()">&#128640; 一键创建贴图草稿</button>
         </div>
-        <div v-if="articleDraftResult" class="content-box rewritten" style="margin-top:12px">
-          ✅ 文章草稿已创建！media_id: {{ articleDraftResult.media_id }}
+        <div class="result-card" id="tietu-result">
+            <div class="result-icon" id="tietu-result-icon"></div>
+            <div class="result-title" id="tietu-result-title"></div>
+            <div class="result-meta" id="tietu-result-meta"></div>
+            <div class="result-tip" id="tietu-result-tip"></div>
+            <button class="btn-outline" onclick="resetTietu()">&#128260; 再来一篇</button>
         </div>
-      </div>
+        <div class="history" id="tietu-history" style="display:none">
+            <div class="history-title">&#128203; 最近记录</div>
+            <div id="tietu-history-list"></div>
+        </div>
     </div>
 
-    <!-- ============ Settings Modal ============ -->
-    <div class="modal-overlay" v-if="showSettings" @click.self="showSettings=false">
-      <div class="modal">
-        <h3>⚙️ 设置</h3>
-
-        <!-- AI Key -->
-        <div class="label">星洞AI API Key</div>
-        <div class="card-row">
-          <input class="input" v-model="aiKey" placeholder="sk-..." style="flex:2">
-          <button class="btn btn-blue btn-sm" @click="saveAiKey">保存</button>
-          <button class="btn btn-ghost btn-sm" @click="testAiKey" :disabled="testingKey">测通</button>
+    <!-- Tab 1: AI二创 -->
+    <div class="tab-panel" id="panel-1">
+        <div class="card" id="rewrite-form">
+            <div class="fg">
+                <label>&#128279; 原帖链接</label>
+                <input type="text" id="rewrite-url" placeholder="抖音 / 小红书图文链接" autocomplete="off" spellcheck="false">
+            </div>
+            <div class="fg">
+                <label>&#128241; 发布公众号</label>
+                <select id="rewrite-account"></select>
+            </div>
+            <div class="fg">
+                <label>&#127912; 改写风格</label>
+                <div class="style-grid">
+                    <div class="style-item active" onclick="pickRewriteStyle(this,'general')">通用</div>
+                    <div class="style-item" onclick="pickRewriteStyle(this,'humorous')">&#129321; 幽默</div>
+                    <div class="style-item" onclick="pickRewriteStyle(this,'professional')">&#128188; 专业</div>
+                    <div class="style-item" onclick="pickRewriteStyle(this,'emotional')">&#128150; 走心</div>
+                </div>
+            </div>
+            <div class="fg" id="rewrite-preview-fg" style="display:none">
+                <label>&#128065; 原帖预览</label>
+                <div id="rewrite-preview" class="preview-box">解析后显示</div>
+            </div>
+            <button class="btn-primary" id="rewrite-btn" onclick="doRewrite()">&#10024; AI改写 + 生图 + 发草稿</button>
         </div>
-        <p v-if="keyTestMsg" style="font-size:12px;margin-top:6px" :style="{color:keyTestOk?'#34d399':'#f87171'}">{{ keyTestMsg }}</p>
-
-        <!-- Change Password -->
-        <div style="margin-top:24px">
-          <div class="label">修改密码</div>
-          <input class="input" v-model="oldPwd" type="password" placeholder="原密码" style="margin-bottom:8px">
-          <input class="input" v-model="newPwd" type="password" placeholder="新密码（至少4位）">
-          <button class="btn btn-orange btn-block" style="margin-top:8px" @click="changePwd">修改密码</button>
-          <p v-if="pwdMsg" style="font-size:12px;margin-top:6px;color:#fbbf24">{{ pwdMsg }}</p>
+        <div class="result-card" id="rewrite-result">
+            <div class="result-icon" id="rewrite-result-icon"></div>
+            <div class="result-title" id="rewrite-result-title"></div>
+            <div class="result-meta" id="rewrite-result-meta"></div>
+            <div class="result-tip" id="rewrite-result-tip"></div>
+            <button class="btn-outline" onclick="resetRewrite()">&#128260; 再来一篇</button>
         </div>
-
-        <div class="btn-row">
-          <button class="btn btn-ghost" style="flex:1" @click="showAccounts=true;showSettings=false">📋 管理公众号</button>
-          <button class="btn btn-ghost" style="flex:1" @click="showSettings=false">关闭</button>
-        </div>
-      </div>
     </div>
 
-    <!-- ============ Accounts Modal ============ -->
-    <div class="modal-overlay" v-if="showAccounts" @click.self="showAccounts=false">
-      <div class="modal">
-        <h3>📋 公众号管理</h3>
-        <div v-for="a in accounts" :key="a.name" style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,.06)">
-          <div><strong style="font-size:14px">{{ a.name }}</strong><br><span style="font-size:11px;color:rgba(255,255,255,.4)">{{ a.app_id }}</span></div>
-          <button class="btn btn-ghost btn-sm" @click="deleteAccount(a.name)">删除</button>
+    <!-- Tab 2: 写文章 -->
+    <div class="tab-panel" id="panel-2">
+        <div class="card" id="article-form">
+            <div class="fg">
+                <label>&#9997; 文章主题</label>
+                <input type="text" id="article-topic" placeholder="输入文章主题或标题" autocomplete="off">
+            </div>
+            <div class="fg">
+                <label>&#128241; 发布公众号</label>
+                <select id="article-account"></select>
+            </div>
+            <div class="fg">
+                <label>&#127912; 写作风格</label>
+                <div class="style-grid">
+                    <div class="style-item active" onclick="pickArticleStyle(this,'general')">通用</div>
+                    <div class="style-item" onclick="pickArticleStyle(this,'pet')">&#128062; 宠物</div>
+                    <div class="style-item" onclick="pickArticleStyle(this,'floral')">&#127800; 花艺</div>
+                    <div class="style-item" onclick="pickArticleStyle(this,'tech')">&#128187; 科技</div>
+                    <div class="style-item" onclick="pickArticleStyle(this,'lifestyle')">&#127775; 生活</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px">
+                <button class="btn-primary" id="article-preview-btn" onclick="doPreviewArticle()" style="flex:1">&#128196; 预览文章</button>
+                <button class="btn-primary" id="article-draft-btn" onclick="doArticleDraft()" style="flex:1;background:linear-gradient(135deg,#10b981,#059669)">&#128228; 直接发草稿</button>
+            </div>
         </div>
-        <div style="margin-top:16px">
-          <input class="input" v-model="newAcc.name" placeholder="公众号名称" style="margin-bottom:8px">
-          <input class="input" v-model="newAcc.app_id" placeholder="AppID" style="margin-bottom:8px">
-          <input class="input" v-model="newAcc.app_secret" type="password" placeholder="AppSecret">
-          <button class="btn btn-purple btn-block" style="margin-top:8px" @click="addAccount" :disabled="addingAcc">添加</button>
-          <p v-if="accMsg" style="font-size:12px;margin-top:6px;color:#fbbf24">{{ accMsg }}</p>
+        <div class="card" id="article-preview-card" style="display:none">
+            <label style="font-size:14px;font-weight:600;color:var(--text);display:block;margin-bottom:8px">&#128065; 文章预览</label>
+            <div id="article-preview-content" class="article-preview"></div>
+            <button class="btn-primary" onclick="doArticleDraft()" style="background:linear-gradient(135deg,#10b981,#059669)">&#128228; 确认发到草稿箱</button>
         </div>
-        <div class="btn-row"><button class="btn btn-ghost" style="flex:1" @click="showAccounts=false;showSettings=true">← 返回设置</button></div>
-      </div>
+        <div class="result-card" id="article-result">
+            <div class="result-icon" id="article-result-icon"></div>
+            <div class="result-title" id="article-result-title"></div>
+            <div class="result-meta" id="article-result-meta"></div>
+            <div class="result-tip" id="article-result-tip"></div>
+            <button class="btn-outline" onclick="resetArticle()">&#128260; 再写一篇</button>
+        </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-bg" id="settings-modal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeSettings()">&#10005;</button>
+            <h2>&#9881; 设置</h2>
+            <div class="fg">
+                <label>&#128273; 星洞AI API Key</label>
+                <input type="text" id="setting-apikey" placeholder="输入星洞AI的API Key">
+            </div>
+            <div style="display:flex;gap:8px;margin-bottom:16px">
+                <button class="btn-primary" onclick="saveApiKey()" style="flex:1">&#128190; 保存</button>
+                <button class="btn-sm" onclick="testApiKey()">&#128268; 测试连接</button>
+            </div>
+            <div id="api-test-result" style="font-size:13px;color:var(--text-sec);margin-bottom:16px"></div>
+            <div class="fg">
+                <label>&#128241; 公众号管理</label>
+                <div id="accounts-list"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading -->
+    <div class="loading-overlay" id="loading">
+        <div class="loader-box">
+            <div class="spinner"></div>
+            <div class="loader-text" id="loading-text">处理中...</div>
+            <div class="loader-sub" id="loading-sub">请稍候</div>
+        </div>
     </div>
 
     <!-- Toast -->
-    <div class="toast" :class="'toast-'+toastType" v-if="toastMsg" style="animation:fadeIn .3s">{{ toastMsg }}</div>
+    <div class="toast" id="toast"></div>
 
-  </div>
-</div>
+    <div class="footer">AI POWERED &#183; SOCIAL &rarr; WECHAT DRAFT</div>
 
-<script>
-const { createApp } = Vue
-createApp({
-  data() {
-    return {
-      // Auth
-      loggedIn: false,
-      loginPassword: '',
-      loginErr: '',
-      loggingIn: false,
-      token: localStorage.getItem('tietu_token') || '',
+    <script>
+        // ============ State ============
+        let currentTab = 0;
+        let accounts = [];
+        let rewriteStyle = 'general';
+        let articleStyle = 'general';
+        let articleMd = '';
+        let history = JSON.parse(localStorage.getItem('tietu_history') || '[]');
+        let lastAccount = localStorage.getItem('tietu_last_account') || '';
 
-      // Tabs
-      tab: 'tietu',
-
-      // Tab 1: 贴图
-      tietuUrl: '',
-      tietuAccount: '',
-      creatingTietu: false,
-      tietuResult: null,
-
-      // Tab 2: 二创
-      rewriteUrl: '',
-      parsing: false,
-      parsedData: null,
-      rewriteStyle: '更吸引人',
-      rewriteStyles: [
-        { key: '更吸引人', label: '🔥 更吸引人' },
-        { key: '更专业', label: '📚 更专业' },
-        { key: '更简洁', label: '✂️ 更简洁' },
-        { key: '小红书风格', label: '📕 小红书风' },
-      ],
-      rewriting: false,
-      rewrittenText: '',
-      imagePrompt: '',
-      generatingImage: false,
-      generatedImage: '',
-      rewriteAccount: '',
-      publishingRewrite: false,
-      rewriteDraftResult: null,
-
-      // Tab 3: 写文章
-      articleTopic: '',
-      articleStyle: '通用',
-      writingArticle: false,
-      articleTitle: '',
-      articleContent: '',
-      articleAccount: '',
-      creatingArticleDraft: false,
-      articleDraftResult: null,
-
-      // Modals
-      showSettings: false,
-      showAccounts: false,
-
-      // Settings
-      aiKey: '',
-      testingKey: false,
-      keyTestMsg: '',
-      keyTestOk: false,
-      oldPwd: '',
-      newPwd: '',
-      pwdMsg: '',
-
-      // Accounts
-      accounts: [],
-      newAcc: { name: '', app_id: '', app_secret: '' },
-      addingAcc: false,
-      accMsg: '',
-
-      // Toast
-      toastMsg: '',
-      toastType: 'info',
-      toastTimer: null,
-    }
-  },
-  mounted() {
-    if (this.token) this.verifyAndLoad()
-  },
-  methods: {
-    api() {
-      return axios.create({
-        baseURL: '/api',
-        headers: this.token ? { Authorization: 'Bearer ' + this.token } : {},
-        timeout: 180000
-      })
-    },
-
-    async doLogin() {
-      this.loginErr = ''
-      if (!this.loginPassword) { this.loginErr = '请输入密码'; return }
-      this.loggingIn = true
-      try {
-        const res = await axios.post('/api/auth/login', { password: this.loginPassword })
-        this.token = res.data.token
-        localStorage.setItem('tietu_token', this.token)
-        this.loggedIn = true
-        this.loginPassword = ''
-        await this.loadData()
-      } catch (e) {
-        this.loginErr = e.response?.data?.message || '登录失败'
-      }
-      this.loggingIn = false
-    },
-
-    async verifyAndLoad() {
-      try {
-        const res = await axios.get('/api/auth/verify', {
-          headers: { Authorization: 'Bearer ' + this.token }
-        })
-        this.loggedIn = true
-        await this.loadData()
-      } catch {
-        localStorage.removeItem('tietu_token')
-        this.token = ''
-      }
-    },
-
-    async loadData() {
-      try {
-        const [accRes, keyRes] = await Promise.all([
-          this.api().get('/api/accounts'),
-          this.api().get('/api/ai-key')
-        ])
-        this.accounts = accRes.data.accounts || []
-      } catch {}
-    },
-
-    toast(msg, type = 'info') {
-      this.toastMsg = msg
-      this.toastType = type
-      clearTimeout(this.toastTimer)
-      this.toastTimer = setTimeout(() => { this.toastMsg = '' }, 2500)
-    },
-
-    // ===== Tab 1: 贴图 =====
-    async doCreateTietu() {
-      if (!this.tietuAccount) { this.toast('请选择公众号', 'error'); return }
-      if (!this.tietuUrl) { this.toast('请输入链接', 'error'); return }
-      this.creatingTietu = true
-      this.tietuResult = null
-      try {
-        const res = await this.api().post('/api/create-draft', { url: this.tietuUrl, account: this.tietuAccount })
-        if (res.data.status === 'success') {
-          this.tietuResult = res.data
-          this.toast('✅ 贴图草稿创建成功！', 'success')
-        } else {
-          this.toast(res.data.message || '失败', 'error')
+        // ============ API ============
+        async function api(url, opts) {
+            const resp = await fetch(url, opts);
+            return resp.json();
         }
-      } catch (e) {
-        this.toast(e.response?.data?.message || '创建失败', 'error')
-      }
-      this.creatingTietu = false
-    },
 
-    // ===== Tab 2: 二创 =====
-    async doParse() {
-      if (!this.rewriteUrl) { this.toast('请输入链接', 'error'); return }
-      this.parsing = true
-      this.parsedData = null
-      try {
-        const res = await this.api().post('/api/parse', { url: this.rewriteUrl })
-        this.parsedData = res.data
-        this.imagePrompt = '公众号封面图，' + (this.parsedData.title || '').substring(0, 20) + '，简约风格，16:9横屏'
-        this.rewrittenText = ''
-        this.generatedImage = ''
-        this.toast(`解析成功: ${res.data.title?.substring(0,20)}...`, 'success')
-      } catch (e) {
-        this.toast(e.response?.data?.message || '解析失败，请检查链接', 'error')
-      }
-      this.parsing = false
-    },
+        // ============ Init ============
+        (async function init() {
+            try {
+                const data = await api('/api/accounts');
+                accounts = data.accounts || [];
+                populateAccounts();
+                renderHistory();
+            } catch(e) {
+                showToast('Failed to load accounts', 'error');
+            }
+        })();
 
-    async doRewrite() {
-      if (!this.parsedData?.desc && !this.parsedData?.title) {
-        this.toast('请先解析链接', 'error'); return
-      }
-      this.rewriting = true
-      try {
-        const res = await this.api().post('/api/ai/rewrite-text', {
-          text: this.parsedData.desc || this.parsedData.title,
-          title: this.parsedData.title,
-          style: this.rewriteStyle
-        })
-        this.rewrittenText = res.data.rewritten
-        this.toast('改写完成！', 'success')
-      } catch (e) {
-        const msg = e.response?.data?.message || '改写失败'
-        if (msg.includes('请先配置')) this.showSettings = true
-        this.toast(msg, 'error')
-      }
-      this.rewriting = false
-    },
-
-    async doGenImage() {
-      if (!this.imagePrompt) { this.toast('请输入图片描述', 'error'); return }
-      this.generatingImage = true
-      try {
-        const res = await this.api().post('/api/ai/generate-image', { prompt: this.imagePrompt })
-        if (res.data.status === 'success') {
-          this.generatedImage = res.data.image_url
-          this.toast('图片生成成功！', 'success')
+        function populateAccounts() {
+            ['tietu-account','rewrite-account','article-account'].forEach(function(id) {
+                var sel = document.getElementById(id);
+                sel.innerHTML = '<option value="">请选择</option>';
+                accounts.forEach(function(a) {
+                    var opt = document.createElement('option');
+                    opt.value = a; opt.textContent = a;
+                    if (a === lastAccount) opt.selected = true;
+                    sel.appendChild(opt);
+                });
+            });
         }
-      } catch (e) {
-        this.toast(e.response?.data?.message || '生图失败', 'error')
-      }
-      this.generatingImage = false
-    },
 
-    async doPublishRewrite() {
-      if (!this.rewriteAccount) { this.toast('请选择公众号', 'error'); return }
-      if (!this.parsedData) { this.toast('请先解析链接', 'error'); return }
-      this.publishingRewrite = true
-      this.rewriteDraftResult = null
-      try {
-        const res = await this.api().post('/api/create-draft', {
-          url: this.parsedData.source_url,
-          account: this.rewriteAccount
-        })
-        if (res.data.status === 'success') {
-          this.rewriteDraftResult = res.data
-          this.toast('🚀 二创草稿创建成功！', 'success')
-        } else {
-          this.toast(res.data.message || '失败', 'error')
+        // ============ Tabs ============
+        function switchTab(idx) {
+            currentTab = idx;
+            document.querySelectorAll('.tab').forEach(function(t, i) {
+                t.classList.toggle('active', i === idx);
+            });
+            document.querySelectorAll('.tab-panel').forEach(function(p, i) {
+                p.classList.toggle('active', i === idx);
+            });
         }
-      } catch (e) {
-        this.toast(e.response?.data?.message || '创建失败', 'error')
-      }
-      this.publishingRewrite = false
-    },
 
-    // ===== Tab 3: 写文章 =====
-    async doWriteArticle() {
-      if (!this.articleTopic) { this.toast('请输入文章主题', 'error'); return }
-      this.writingArticle = true
-      this.articleContent = ''
-      try {
-        const res = await this.api().post('/api/ai/write-article', {
-          topic: this.articleTopic, style: this.articleStyle
-        })
-        this.articleTitle = res.data.title
-        this.articleContent = res.data.content_md
-        this.toast('✅ 文章生成完毕！', 'success')
-      } catch (e) {
-        const msg = e.response?.data?.message || '写文章失败'
-        if (msg.includes('请先配置')) this.showSettings = true
-        this.toast(msg, 'error')
-      }
-      this.writingArticle = false
-    },
-
-    async doCreateArticleDraft() {
-      if (!this.articleAccount) { this.toast('请选择发布公众号', 'error'); return }
-      if (!this.articleContent) { this.toast('请先写文章', 'error'); return }
-      this.creatingArticleDraft = true
-      this.articleDraftResult = null
-      try {
-        const res = await this.api().post('/api/ai/create-article-draft', {
-          account: this.articleAccount,
-          title: this.articleTitle,
-          content_md: this.articleContent,
-          author: '',
-          image_prompt: '公众号文章封面，' + this.articleTitle.substring(0, 20) + '，简约清新风格，16:9'
-        })
-        if (res.data.status === 'success') {
-          this.articleDraftResult = res.data
-          this.toast('🎉 文章草稿已创建！去公众号后台查看吧', 'success')
+        // ============ Toast ============
+        function showToast(msg, type) {
+            var t = document.getElementById('toast');
+            t.textContent = (type === 'success' ? '✅ ' : '❌ ') + msg;
+            t.className = 'toast ' + type + ' show';
+            clearTimeout(t._timer);
+            t._timer = setTimeout(function() { t.classList.remove('show'); }, 3000);
         }
-      } catch (e) {
-        this.toast(e.response?.data?.message || '创建失败: ' + (e.response?.data?.message || e.message), 'error')
-      }
-      this.creatingArticleDraft = false
-    },
 
-    // ===== Settings =====
-    async saveAiKey() {
-      if (!this.aiKey) { this.toast('请输入API Key', 'error'); return }
-      try {
-        await this.api().post('/api/ai-key', { api_key: this.aiKey })
-        this.toast('API Key已保存', 'success')
-      } catch (e) { this.toast('保存失败', 'error') }
-    },
+        // ============ Loading ============
+        function showLoading(text, sub) {
+            document.getElementById('loading-text').textContent = text || '处理中...';
+            document.getElementById('loading-sub').textContent = sub || '请稍候';
+            document.getElementById('loading').classList.add('show');
+        }
+        function hideLoading() {
+            document.getElementById('loading').classList.remove('show');
+        }
 
-    async testAiKey() {
-      if (!this.aiKey) { this.toast('请先输入API Key', 'error'); return }
-      this.testingKey = true
-      this.keyTestMsg = ''
-      try {
-        const res = await this.api().post('/api/ai/test-key', { api_key: this.aiKey })
-        this.keyTestOk = res.data.success
-        this.keyTestMsg = res.data.success ? '✅ 测通成功' : '❌ ' + (res.data.error || '测通失败')
-      } catch { this.keyTestMsg = '❌ 网络错误'; this.keyTestOk = false }
-      this.testingKey = false
-    },
+        // ============ History ============
+        function saveHistory(entry) {
+            history.unshift(Object.assign({}, entry, { time: Date.now() }));
+            if (history.length > 20) history = history.slice(0, 20);
+            localStorage.setItem('tietu_history', JSON.stringify(history));
+            renderHistory();
+        }
 
-    async changePwd() {
-      if (!this.oldPwd || !this.newPwd) { this.pwdMsg = '请填写完整'; return }
-      if (this.newPwd.length < 4) { this.pwdMsg = '新密码至少4位'; return }
-      try {
-        await this.api().post('/api/auth/change-password', { old_password: this.oldPwd, new_password: this.newPwd })
-        this.pwdMsg = '✅ 密码已修改'
-        this.oldPwd = ''; this.newPwd = ''
-      } catch (e) { this.pwdMsg = '❌ ' + (e.response?.data?.message || '失败') }
-    },
+        function renderHistory() {
+            var el = document.getElementById('tietu-history');
+            var list = document.getElementById('tietu-history-list');
+            if (!history.length) { el.style.display = 'none'; return; }
+            el.style.display = 'block';
+            list.innerHTML = history.slice(0, 5).map(function(h) {
+                var sec = Math.floor((Date.now() - h.time) / 1000);
+                var ago = sec < 60 ? '刚刚' : sec < 3600 ? Math.floor(sec/60)+'分钟前' : sec < 86400 ? Math.floor(sec/3600)+'小时前' : Math.floor(sec/86400)+'天前';
+                return '<div class="history-item"><div class="history-status ' + h.status + '">' + (h.status==='success'?'✅':'❌') + '</div><div class="history-info"><div class="h-account">' + (h.account||'') + '</div><div class="h-title">' + (h.title||'') + '</div><div class="h-meta">' + (h.imageCount?h.imageCount+'张':'') + '</div></div><div class="history-time">' + ago + '</div></div>';
+            }).join('');
+        }
 
-    // ===== Accounts =====
-    async addAccount() {
-      const { name, app_id, app_secret } = this.newAcc
-      if (!name || !app_id || !app_secret) { this.accMsg = '请填写完整'; return }
-      this.addingAcc = true
-      try {
-        await this.api().post('/api/accounts/add', { name, app_id, app_secret })
-        this.toast(`✅ "${name}" 添加成功`, 'success')
-        this.newAcc = { name: '', app_id: '', app_secret: '' }
-        this.accMsg = ''
-        await this.loadData()
-      } catch (e) { this.accMsg = '❌ ' + (e.response?.data?.message || '失败') }
-      this.addingAcc = false
-    },
+        // ============ Tab 0: 贴图 ============
+        async function doTietu() {
+            var url = document.getElementById('tietu-url').value.trim();
+            var account = document.getElementById('tietu-account').value;
+            if (!url) { showToast('请粘贴链接', 'error'); return; }
+            if (!account) { showToast('请选择公众号', 'error'); return; }
 
-    async deleteAccount(name) {
-      if (!confirm(`确定删除 "${name}"？`)) return
-      try {
-        await this.api().post('/api/accounts/delete', { name })
-        this.toast(`"${name}" 已删除`, 'info')
-        await this.loadData()
-      } catch (e) { this.toast('删除失败', 'error') }
-    },
+            lastAccount = account;
+            localStorage.setItem('tietu_last_account', account);
+            document.getElementById('tietu-btn').disabled = true;
+            showLoading('正在解析并上传图片...', '约需1-2分钟');
 
-    // ===== Helpers =====
-    renderMarkdown(md) {
-      if (!md) return ''
-      return md
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
-        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
-        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
-        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.+?)\*/g, '<em>$1</em>')
-        .replace(/!\[.*\]\((.+?)\)/g, '<br><img src="$1" style="max-width:100%;border-radius:8px;margin:8px 0"><br>')
-        .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" style="color:#a78bfa">$1</a>')
-        .split('\n\n').map(p => {
-          if (/^<[hH]/.test(p)) return p
-          if (p.trim().startsWith('- ') || p.trim().startsWith('1. ')) return '<p style="margin:4px 0">' + p.replace(/\n/g, '<br>') + '</p>'
-          return '<p>' + p.replace(/\n/g, '<br>') + '</p>'
-        }).join('')
-    }
-  }
-}).mount('#app')
-</script>
+            try {
+                var data = await api('/api/create-draft', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url, account: account })
+                });
+                hideLoading();
+                document.getElementById('tietu-btn').disabled = false;
+                if (data.status === 'success') {
+                    showTietuResult('success', data);
+                    saveHistory({ status: 'success', account: account, title: data.title, imageCount: data.image_count });
+                } else {
+                    showTietuResult('error', data);
+                    saveHistory({ status: 'error', account: account, title: data.message });
+                }
+            } catch(e) {
+                hideLoading();
+                document.getElementById('tietu-btn').disabled = false;
+                showTietuResult('error', { message: '网络错误: ' + e.message });
+            }
+        }
+
+        function showTietuResult(status, data) {
+            document.getElementById('tietu-form').style.display = 'none';
+            var rc = document.getElementById('tietu-result');
+            rc.classList.add('show');
+            if (status === 'success') {
+                document.getElementById('tietu-result-icon').textContent = '🎉';
+                document.getElementById('tietu-result-title').textContent = '贴图草稿创建成功！';
+                document.getElementById('tietu-result-meta').innerHTML =
+                    '<div class="result-meta-item"><span class="label">标题</span><span class="value">' + (data.title||'-') + '</span></div>' +
+                    '<div class="result-meta-item"><span class="label">图片数</span><span class="value">' + (data.image_count||0) + ' 张</span></div>' +
+                    '<div class="result-meta-item"><span class="label">media_id</span><span class="value" style="font-size:11px">' + (data.media_id||'-') + '</span></div>';
+                document.getElementById('tietu-result-tip').innerHTML = '💡 请打开公众号后台 → 草稿箱查看';
+                showToast('创建成功！', 'success');
+            } else {
+                document.getElementById('tietu-result-icon').textContent = '😢';
+                document.getElementById('tietu-result-title').textContent = '创建失败';
+                document.getElementById('tietu-result-meta').innerHTML = '<div class="result-meta-item"><span class="label">错误</span><span class="value" style="color:var(--error)">' + (data.message||'未知错误') + '</span></div>';
+                document.getElementById('tietu-result-tip').innerHTML = '💡 请检查链接是否正确';
+                showToast(data.message || '创建失败', 'error');
+            }
+        }
+
+        function resetTietu() {
+            document.getElementById('tietu-form').style.display = 'block';
+            document.getElementById('tietu-result').classList.remove('show');
+            document.getElementById('tietu-url').value = '';
+        }
+
+        // ============ Tab 1: AI二创 ============
+        function pickRewriteStyle(el, style) {
+            rewriteStyle = style;
+            document.querySelectorAll('#panel-1 .style-item').forEach(function(s) { s.classList.remove('active'); });
+            el.classList.add('active');
+        }
+
+        // Auto-parse on URL input
+        var rewriteUrlTimer = null;
+        document.getElementById('rewrite-url').addEventListener('input', function() {
+            var url = this.value.trim();
+            clearTimeout(rewriteUrlTimer);
+            document.getElementById('rewrite-preview-fg').style.display = 'none';
+            if (!url) return;
+            rewriteUrlTimer = setTimeout(async function() {
+                try {
+                    var data = await api('/api/parse', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: url })
+                    });
+                    if (data.error) return;
+                    document.getElementById('rewrite-preview-fg').style.display = 'block';
+                    var preview = '标题: ' + (data.title || '') + '\n' +
+                        '作者: ' + (data.author || '') + '\n' +
+                        '图片: ' + (data.image_count || 0) + '张\n' +
+                        '---\n' + (data.desc || '(无文字内容)');
+                    document.getElementById('rewrite-preview').textContent = preview;
+                } catch(e) {}
+            }, 800);
+        });
+
+        async function doRewrite() {
+            var url = document.getElementById('rewrite-url').value.trim();
+            var account = document.getElementById('rewrite-account').value;
+            if (!url) { showToast('请粘贴原帖链接', 'error'); return; }
+            if (!account) { showToast('请选择公众号', 'error'); return; }
+
+            lastAccount = account;
+            localStorage.setItem('tietu_last_account', account);
+            document.getElementById('rewrite-btn').disabled = true;
+            showLoading('AI改写文案中...', '可能需要1-3分钟');
+
+            try {
+                var data = await api('/api/ai/rewrite-and-draft', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url, account: account, style: rewriteStyle })
+                });
+                hideLoading();
+                document.getElementById('rewrite-btn').disabled = false;
+
+                if (data.status === 'success') {
+                    document.getElementById('rewrite-form').style.display = 'none';
+                    var rc = document.getElementById('rewrite-result');
+                    rc.classList.add('show');
+                    document.getElementById('rewrite-result-icon').textContent = '🎉';
+                    document.getElementById('rewrite-result-title').textContent = 'AI二创草稿创建成功！';
+                    document.getElementById('rewrite-result-meta').innerHTML =
+                        '<div class="result-meta-item"><span class="label">标题</span><span class="value">' + (data.title||'-') + '</span></div>' +
+                        '<div class="result-meta-item"><span class="label">图片数</span><span class="value">' + (data.image_count||0) + ' 张（AI生成）</span></div>' +
+                        '<div class="result-meta-item"><span class="label">media_id</span><span class="value" style="font-size:11px">' + (data.media_id||'-') + '</span></div>' +
+                        (data.rewritten_text ? '<div class="result-meta-item"><span class="label">改写内容</span><span class="value" style="max-width:60%;white-space:pre-wrap;font-size:12px">' + data.rewritten_text.substring(0,100) + '...</span></div>' : '');
+                    document.getElementById('rewrite-result-tip').innerHTML = '💡 AI已改写文案并生成新图片，请到草稿箱查看';
+                    showToast('AI二创成功！', 'success');
+                    saveHistory({ status: 'success', account: account, title: data.title, imageCount: data.image_count });
+                } else {
+                    showToast(data.error || '二创失败', 'error');
+                }
+            } catch(e) {
+                hideLoading();
+                document.getElementById('rewrite-btn').disabled = false;
+                showToast('网络错误: ' + e.message, 'error');
+            }
+        }
+
+        function resetRewrite() {
+            document.getElementById('rewrite-form').style.display = 'block';
+            document.getElementById('rewrite-result').classList.remove('show');
+            document.getElementById('rewrite-url').value = '';
+            document.getElementById('rewrite-preview-fg').style.display = 'none';
+        }
+
+        // ============ Tab 2: 写文章 ============
+        function pickArticleStyle(el, style) {
+            articleStyle = style;
+            document.querySelectorAll('#panel-2 .style-item').forEach(function(s) { s.classList.remove('active'); });
+            el.classList.add('active');
+        }
+
+        async function doPreviewArticle() {
+            var topic = document.getElementById('article-topic').value.trim();
+            if (!topic) { showToast('请输入文章主题', 'error'); return; }
+
+            document.getElementById('article-preview-btn').disabled = true;
+            showLoading('AI生成文章中...', '约需30-60秒');
+
+            try {
+                var data = await api('/api/ai/write-article', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topic, style: articleStyle })
+                });
+                hideLoading();
+                document.getElementById('article-preview-btn').disabled = false;
+
+                if (data.article) {
+                    articleMd = data.article;
+                    // Simple markdown rendering
+                    var html = data.article
+                        .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+                        .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+                        .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+                        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                        .replace(/\n\n/g, '</p><p>')
+                        .replace(/\n/g, '<br>');
+                    document.getElementById('article-preview-content').innerHTML = '<p>' + html + '</p>';
+                    document.getElementById('article-preview-card').style.display = 'block';
+                } else {
+                    showToast(data.error || '生成失败', 'error');
+                }
+            } catch(e) {
+                hideLoading();
+                document.getElementById('article-preview-btn').disabled = false;
+                showToast('网络错误: ' + e.message, 'error');
+            }
+        }
+
+        async function doArticleDraft() {
+            var topic = document.getElementById('article-topic').value.trim();
+            var account = document.getElementById('article-account').value;
+            if (!topic) { showToast('请输入文章主题', 'error'); return; }
+            if (!account) { showToast('请选择公众号', 'error'); return; }
+
+            lastAccount = account;
+            localStorage.setItem('tietu_last_account', account);
+            document.getElementById('article-draft-btn').disabled = true;
+            showLoading('AI写文章 + 生成封面 + 创建草稿...', '可能需要2-4分钟');
+
+            try {
+                var data = await api('/api/ai/create-article-draft', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ topic: topic, account: account, style: articleStyle })
+                });
+                hideLoading();
+                document.getElementById('article-draft-btn').disabled = false;
+
+                if (data.status === 'success') {
+                    document.getElementById('article-form').style.display = 'none';
+                    document.getElementById('article-preview-card').style.display = 'none';
+                    var rc = document.getElementById('article-result');
+                    rc.classList.add('show');
+                    document.getElementById('article-result-icon').textContent = '🎉';
+                    document.getElementById('article-result-title').textContent = '文章草稿创建成功！';
+                    document.getElementById('article-result-meta').innerHTML =
+                        '<div class="result-meta-item"><span class="label">标题</span><span class="value">' + (data.title||'-') + '</span></div>' +
+                        '<div class="result-meta-item"><span class="label">AI封面</span><span class="value">' + (data.has_cover ? '✅ 已生成' : '❌ 未生成') + '</span></div>' +
+                        '<div class="result-meta-item"><span class="label">media_id</span><span class="value" style="font-size:11px">' + (data.media_id||'-') + '</span></div>';
+                    document.getElementById('article-result-tip').innerHTML = '💡 请到公众号后台草稿箱预览和发布';
+                    showToast('文章草稿创建成功！', 'success');
+                    saveHistory({ status: 'success', account: account, title: data.title, imageCount: 0 });
+                } else {
+                    showToast(data.error || '创建失败', 'error');
+                }
+            } catch(e) {
+                hideLoading();
+                document.getElementById('article-draft-btn').disabled = false;
+                showToast('网络错误: ' + e.message, 'error');
+            }
+        }
+
+        function resetArticle() {
+            document.getElementById('article-form').style.display = 'block';
+            document.getElementById('article-preview-card').style.display = 'none';
+            document.getElementById('article-result').classList.remove('show');
+            document.getElementById('article-topic').value = '';
+            articleMd = '';
+        }
+
+        // ============ Settings ============
+        function openSettings() {
+            document.getElementById('settings-modal').classList.add('show');
+            api('/api/ai-key').then(function(d) {
+                document.getElementById('setting-apikey').value = d.key || '';
+            });
+            renderAccountsList();
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-modal').classList.remove('show');
+        }
+
+        async function saveApiKey() {
+            var key = document.getElementById('setting-apikey').value.trim();
+            await api('/api/ai-key', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: key })
+            });
+            showToast('API Key 已保存', 'success');
+        }
+
+        async function testApiKey() {
+            var el = document.getElementById('api-test-result');
+            el.textContent = '测试中...';
+            try {
+                var data = await api('/api/ai/test-key', { method: 'POST' });
+                if (data.ok) {
+                    el.textContent = '✅ ' + (data.msg || '连接成功');
+                    el.style.color = 'var(--success)';
+                } else {
+                    el.textContent = '❌ ' + (data.msg || '连接失败');
+                    el.style.color = 'var(--error)';
+                }
+            } catch(e) {
+                el.textContent = '❌ 网络错误';
+                el.style.color = 'var(--error)';
+            }
+        }
+
+        function renderAccountsList() {
+            var el = document.getElementById('accounts-list');
+            if (!accounts.length) { el.innerHTML = '<p style="color:var(--text-sec);font-size:13px">暂无公众号</p>'; return; }
+            el.innerHTML = accounts.map(function(a) {
+                return '<div style="padding:8px 0;border-bottom:1px solid var(--border);font-size:14px;color:var(--text)">✅ ' + a + '</div>';
+            }).join('');
+        }
+
+        // ============ Enter key ============
+        document.getElementById('tietu-url').addEventListener('keydown', function(e) { if (e.key === 'Enter') doTietu(); });
+        document.getElementById('article-topic').addEventListener('keydown', function(e) { if (e.key === 'Enter') doPreviewArticle(); });
+    </script>
 </body>
 </html>

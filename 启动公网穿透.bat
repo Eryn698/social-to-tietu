@@ -1,41 +1,36 @@
 @echo off
-chcp 65001 >nul 2>&1
-cd /d "%~dp0"
-
-echo ============================================
-echo    Start Public Tunnel (cpolar)
-echo ============================================
+chcp 65001 > nul
+echo ==============================================
+echo  Cpolar 穿透启动脚本
+echo ==============================================
 echo.
 
-REM Check if server is running
-python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/api/health', timeout=3)" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [ERROR] Server not running! Please run start.bat first
-    pause
-    exit /b 1
+REM 等待Flask服务器启动
+timeout /t 3 > nul
+
+REM 启动cpolar穿透到5000端口
+echo [1/2] 正在启动cpolar http隧道（端口5000）...
+start "Cpolar-SocialTietu" /min "C:\Program Files\cpolar\cpolar.exe" http 5000 -log "C:\Users\83718\.qclaw\workspace\social-to-tietu-web\cpolar_run.log" -log-level INFO
+
+echo [2/2] 等待隧道建立（10秒）...
+timeout /t 10 > nul
+
+REM 读取日志获取公网地址
+echo.
+echo ==============================================
+echo  公网地址（从日志提取）
+echo ==============================================
+if exist "C:\Users\83718\.qclaw\workspace\social-to-tietu-web\cpolar_run.log" (
+    findstr /C:"http" "C:\Users\83718\.qclaw\workspace\social-to-tietu-web\cpolar_run.log" 2>nul | findstr /V "127.0.0.1" 2>nul
+) else (
+    echo 日志文件未生成，请手动查看：
+    echo   http://127.0.0.1:4042
 )
 
-echo [1/3] Cleaning old process...
-taskkill /f /im cpolar.exe >nul 2>&1
-timeout /t 2 >nul
-
-echo [2/3] Starting cpolar tunnel: social-tietu...
-start "cpolar" /min "C:\Program Files\cpolar\cpolar.exe" run -config "C:\Users\83718\.cpolar\cpolar.yml" social-tietu
-
-echo [3/3] Waiting for tunnel (20s)...
-timeout /t 20 >nul
-
 echo.
-echo ============================================
-echo    Public URL:
-echo.
-echo    Open cpolar dashboard to get URL:
-echo    http://127.0.0.1:4042
-echo.
-echo    Or check online at:
-echo    https://dashboard.cpolar.com/status
-echo.
-echo    Send this URL to your phone!
-echo    Press Ctrl+C to stop tunnel
-echo ============================================
+echo 提示：
+echo   - 公网地址在上面的输出中，复制后发给自己
+echo   - 免费版cpolar地址每次变化，需重新查看
+echo   - 关闭cpolar窗口即停止穿透
+echo ==============================================
 pause

@@ -1,686 +1,677 @@
 #!/usr/bin/env python3
 """
-社交媒体图文 → 公众号草稿 Web界面 v2.0
-新增功能：密码登录 | AI二创(reference xhs-rewriter) | AI写文章发公众号
+图文转贴图 v2.0 - AI二创 + AI写文章 + 贴图
+后端：Flask
+AI：星洞AI (api.lk888.ai) - gpt-5.4 + gpt-image-2
 """
 
 import os
 import sys
 import json
-import subprocess
-import tempfile
-import hashlib
-import secrets
 import time
+import tempfile
 import logging
+import subprocess
 import re
-from datetime import datetime, timedelta
-from functools import wraps
-from flask import Flask, render_template, request, jsonify
+import base64
+import traceback
+from pathlib import Path
+from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
-# ====== 初始化 ======
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 CORS(app)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SCRIPTS_DIR = os.path.join(BASE_DIR, 'scripts', 'wechat-article-publisher')
-TIETU_SCRIPT = os.path.join(SCRIPTS_DIR, 'social_to_tietu.py')
-ACCOUNTS_FILE = os.path.join(BASE_DIR, 'server', 'data', 'accounts.json')
-PASSWORD_FILE = os.path.join(BASE_DIR, 'server', 'config', 'password.json')
-API_KEY_FILE = os.path.join(BASE_DIR, 'server', 'config', 'apikey.json')
+SCRIPT_DIR = r'C:\Users\83718\.qclaw\skills\wechat-article-publisher\scripts'
 
-# 确保目录存在
-os.makedirs(os.path.join(BASE_DIR, 'server', 'data'), exist_ok=True)
-os.makedirs(os.path.join(BASE_DIR, 'server', 'config'), exist_ok=True)
+# Add script dir to path
+if SCRIPT_DIR not in sys.path:
+    sys.path.insert(0, SCRIPT_DIR)
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
-log = logging.getLogger(__name__)
+# Import social_to_tietu
+try:
+    import social_to_tietu as stt
+    logger.info('social_to_tietu module loaded')
+except Exception as e:
+    logger.error(f'Failed to load social_to_tietu: {e}')
+    stt = None
 
+# ============ Config ============
+CONFIG_DIR = os.path.join(BASE_DIR, 'server', 'config')
+os.makedirs(CONFIG_DIR, exist_ok=True)
 
-# ==================== 密码管理系统 ====================
-
-def _hash_password(pwd):
-    return hashlib.sha256(f"social_tietu_{pwd}".encode()).hexdigest()
-
-
-def get_password_hash():
-    try:
-        with open(PASSWORD_FILE, 'r', encoding='utf-8') as f:
-            data = json.load(f)
-            return data.get('password_hash', '')
-    except:
-        return _hash_password('admin123')  # 初始默认密码
-
-
-def save_password(new_password):
-    data = {'password_hash': _hash_password(new_password)}
-    with open(PASSWORD_FILE, 'w', encoding='utf-8') as f:
-        json.dump(data, f)
-
-
-# 会话令牌（简单实现：内存字典，12小时过期）
-_sessions = {}
-
-def _clean_expired_sessions():
-    now = datetime.now()
-    expired = [k for k, v in _sessions.items() if v['expires'] < now]
-    for k in expired:
-        del _sessions[k]
-
-
-def require_auth(f):
-    @wraps(f)
-    def wrapper(*args, **kwargs):
-        _clean_expired_sessions()
-        auth_header = request.headers.get('Authorization', '')
-        if auth_header.startswith('Bearer '):
-            token = auth_header[7:]
-            if token in _sessions:
-                _sessions[token]['expires'] = datetime.now() + timedelta(hours=12)
-                return f(*args, **kwargs)
-        return jsonify({'status': 'error', 'message': '请先登录', 'code': 'AUTH_REQUIRED'}), 401
-    return wrapper
-
-
-# ==================== AI Key 管理 ====================
-
-def get_ai_key():
-    try:
-        with open(API_KEY_FILE, 'r', encoding='utf-8') as f:
-            return json.load(f).get('api_key', '')
-    except:
-        return ''
-
-
-def save_ai_key(key):
-    with open(API_KEY_FILE, 'w', encoding='utf-8') as f:
-        json.dump({'api_key': key}, f)
-
-
-# ==================== 公众号配置 ====================
-
-def load_accounts():
-    try:
-        with open(ACCOUNTS_FILE, 'r', encoding='utf-8') as f:
+def load_json(path, default=None):
+    if os.path.exists(path):
+        with open(path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except:
-        return []
+    return default or {}
 
+def save_json(path, data):
+    with open(path, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
 
-def save_accounts(accounts):
-    with open(ACCOUNTS_FILE, 'w', encoding='utf-8') as f:
-        json.dump(accounts, f, ensure_ascii=False, indent=2)
+# API keys
+apikey_path = os.path.join(CONFIG_DIR, 'apikey.json')
+apikey_config = load_json(apikey_path, {})
+XINGDONG_API_KEY = apikey_config.get('xingdong', '')
 
+def get_xingdong_key():
+    """Allow runtime API key update"""
+    global XINGDONG_API_KEY
+    c = load_json(apikey_path, {})
+    XINGDONG_API_KEY = c.get('xingdong', '')
+    return XINGDONG_API_KEY
 
-# ==================== 辅助函数 ====================
+# ============ AI API helpers ============
 
-def _run_py(script_name, *args, timeout=180):
-    """通用 subprocess 调用"""
-    script_path = os.path.join(SCRIPTS_DIR, script_name)
-    cmd = [sys.executable, script_path] + list(args)
-    env = os.environ.copy()
-    env['PYTHONIOENCODING'] = 'utf-8:surrogateescape'
-    env['PYTHONUTF8'] = '1'
-    result = subprocess.run(cmd, capture_output=True, text=True, encoding='utf-8',
-                            errors='replace', timeout=timeout, cwd=SCRIPTS_DIR, env=env)
-    return result
-
-
-def _verify_wechat_credentials(app_id, app_secret):
-    import requests
-    resp = requests.get("https://api.weixin.qq.com/cgi-bin/token",
-                        params={"grant_type": "client_credential", "appid": app_id, "secret": app_secret}, timeout=30)
-    data = resp.json()
-    if data.get('errcode', 0) != 0:
-        raise Exception(f"[{data.get('errcode')}] {data.get('errmsg')}")
-    return True
-
-
-def _call_ai(messages, model='gpt-5.4', max_tokens=2000, temperature=0.7, timeout=120):
-    """调用星洞AI chat/completions"""
-    import requests as req
-    api_key = get_ai_key()
+def ai_chat(prompt, system_prompt=None, model='gpt-5.4', max_retries=2):
+    """Call XingDong AI chat API"""
+    api_key = get_xingdong_key()
     if not api_key:
-        raise Exception("请先配置星洞AI API Key")
-    resp = req.post('https://api.lk888.ai/api/v1/chat/completions', json={
+        raise ValueError('Please configure XingDong AI API key in settings')
+    
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json'
+    }
+    payload = {
         'model': model,
-        'messages': messages,
-        'max_tokens': max_tokens,
-        'temperature': temperature
-    }, headers={'Authorization': f'Bearer {api_key}'}, timeout=timeout)
-    data = resp.json()
-    if data.get('error'):
-        raise Exception(f"AI: {data['error'].get('message', str(data['error']))}")
-    return data['choices'][0]['message']['content']
-
-
-def _generate_image(prompt, model='gpt-image-2', timeout=600):
-    """调用星洞AI生成图片（异步轮询）"""
-    import requests as req
-    api_key = get_ai_key()
-    if not api_key:
-        raise Exception("请先配置星洞AI API Key")
-
-    # Step 1: 提交任务
-    log.info(f'[image] submit: {prompt[:80]}...')
-    resp = req.post('https://api.lk888.ai/api/v1/media/generate', json={
-        'model': model,
-        'params': {'prompt': prompt, 'size': 'auto', 'quality': 'auto'}
-    }, headers={'Authorization': f'Bearer {api_key}'}, timeout=30)
-    body = resp.json()
-    task_id = body.get('data', {}).get('task_id') or body.get('task_id')
-    if not task_id:
-        raise Exception(f"提交图片任务失败: {body}")
-
-    # Step 2: 轮询
-    log.info(f'[image] task_id={task_id}, polling...')
-    for i in range(120):
-        time.sleep(5)
+        'messages': []
+    }
+    if system_prompt:
+        payload['messages'].append({'role': 'system', 'content': system_prompt})
+    payload['messages'].append({'role': 'user', 'content': prompt})
+    
+    for attempt in range(max_retries):
         try:
-            status_resp = req.get(
-                f'https://api.lk888.ai/api/v1/skills/task-status?task_id={task_id}',
-                headers={'Authorization': f'Bearer {api_key}'}, timeout=10)
-            status_data = status_resp.json()
-            if status_data.get('is_final'):
-                result_url = status_data.get('result_url', '')
-                log.info(f'[image] done: {result_url[:60]}...')
-                return result_url
-        except:
-            pass
-    raise Exception("图片生成超时(10分钟)")
+            import urllib.request
+            req = urllib.request.Request(
+                'https://api.lk888.ai/api/v1/chat/completions',
+                data=json.dumps(payload).encode('utf-8'),
+                headers=headers,
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                result = json.loads(resp.read().decode('utf-8'))
+                return result['choices'][0]['message']['content']
+        except Exception as e:
+            logger.warning(f'AI chat attempt {attempt+1} failed: {e}')
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(2)
+    return None
 
+def ai_generate_image(prompt, max_retries=2):
+    """Call XingDong AI image generation (async polling)"""
+    api_key = get_xingdong_key()
+    if not api_key:
+        raise ValueError('Please configure XingDong AI API key in settings')
+    
+    headers = {
+        'Authorization': f'Bearer {api_key}',
+        'Content-Type': 'application/json'
+    }
+    payload = {
+        'model': 'gpt-image-2',
+        'prompt': prompt,
+        'size': '1024x1024'
+    }
+    
+    for attempt in range(max_retries):
+        try:
+            import urllib.request
+            # Submit task
+            req = urllib.request.Request(
+                'https://api.lk888.ai/api/v1/media/generate',
+                data=json.dumps(payload).encode('utf-8'),
+                headers=headers,
+                method='POST'
+            )
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                result = json.loads(resp.read().decode('utf-8'))
+                task_id = result.get('task_id') or result.get('data', {}).get('task_id')
+                if not task_id:
+                    raise ValueError(f'No task_id in response: {result}')
+            
+            # Poll for result
+            for poll in range(120):  # max 10 minutes
+                time.sleep(5)
+                poll_url = f'https://api.lk888.ai/api/v1/skills/task-status?task_id={task_id}'
+                poll_req = urllib.request.Request(poll_url, headers=headers)
+                with urllib.request.urlopen(poll_req, timeout=30) as poll_resp:
+                    poll_data = json.loads(poll_resp.read().decode('utf-8'))
+                
+                if poll_data.get('is_final') or poll_data.get('data', {}).get('is_final'):
+                    result_url = poll_data.get('result_url') or poll_data.get('data', {}).get('result_url')
+                    if result_url:
+                        return result_url
+                logger.info(f'Image gen poll #{poll}: not ready yet')
+            
+            raise TimeoutError('Image generation timed out after 10 minutes')
+        except Exception as e:
+            logger.warning(f'Image gen attempt {attempt+1} failed: {e}')
+            if attempt == max_retries - 1:
+                raise
+            time.sleep(3)
+    return None
 
-def _download_image(url, output_path):
-    import requests as req
+def download_url(url, filepath):
+    """Download URL to file"""
     import urllib.request
+    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+    with urllib.request.urlopen(req, timeout=60) as resp:
+        with open(filepath, 'wb') as f:
+            f.write(resp.read())
+
+def compress_image(input_path, max_kb=800):
+    """Compress image to under max_kb"""
     from PIL import Image
-    import io
+    img = Image.open(input_path)
+    if img.mode in ('RGBA', 'P'):
+        img = img.convert('RGB')
+    img.save(input_path, 'JPEG', quality=85, optimize=True)
+    # If still too big, reduce quality
+    while os.path.getsize(input_path) > max_kb * 1024 and os.path.exists(input_path):
+        from PIL import Image as Img2
+        img2 = Img2.open(input_path)
+        w, h = img2.size
+        img2 = img2.resize((int(w*0.8), int(h*0.8)), Img2.LANCZOS)
+        img2.save(input_path, 'JPEG', quality=75, optimize=True)
 
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-               'Referer': 'https://api.lk888.ai/'}
-    try:
-        raw_resp = req.get(url, headers=headers, timeout=60)
-        raw_resp.raise_for_status()
-    except:
-        req_obj = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req_obj, timeout=60) as urlopen_resp:
-            raw_content = urlopen_resp.read()
-        raw_resp = type('obj', (), {'content': raw_content, 'headers': {'Content-Type': 'image/jpeg'}})()
+# ============ Routes ============
 
-    content_type = raw_resp.headers.get('Content-Type', '')
-    if 'webp' in content_type or url.lower().endswith('.webp'):
-        img = Image.open(io.BytesIO(raw_resp.content))
-        if img.mode == 'RGBA':
-            bg = Image.new('RGB', img.size, (255, 255, 255))
-            bg.paste(img, mask=img.split()[3])
-            img = bg
-        elif img.mode != 'RGB':
-            img = img.convert('RGB')
-        img.save(output_path, 'JPEG', quality=90)
-    else:
-        with open(output_path, 'wb') as f:
-            f.write(raw_resp.content)
+@app.route('/')
+def index():
+    return send_from_directory(os.path.join(BASE_DIR, 'templates'), 'index.html')
 
-    # 压缩到800KB以下
-    size_kb = os.path.getsize(output_path) / 1024
-    if size_kb > 800:
-        from PIL import Image as PILImage
-        img = PILImage.open(output_path)
-        quality = 85
-        while quality > 30:
-            img.save(output_path, 'JPEG', quality=quality)
-            new_size = os.path.getsize(output_path) / 1024
-            if new_size <= 800:
-                break
-            quality -= 10
-    return output_path
+@app.route('/api/health')
+def health():
+    return jsonify({
+        'status': 'ok',
+        'module_loaded': stt is not None,
+        'script_dir': SCRIPT_DIR,
+        'accounts_count': len(get_accounts_list()),
+        'has_ai_key': bool(get_xingdong_key())
+    })
 
+@app.route('/api/accounts')
+def get_accounts():
+    return jsonify({'accounts': get_accounts_list()})
 
-def _upload_to_wechat(app_id, app_secret, image_path):
-    """上传一张图片到微信永久素材"""
-    import requests as req
-    token_resp = req.get("https://api.weixin.qq.com/cgi-bin/token",
-                         params={"grant_type": "client_credential", "appid": app_id, "secret": app_secret}, timeout=30)
-    token_data = token_resp.json()
-    if token_data.get('errcode', 0) != 0:
-        raise Exception(f"获取token失败: {token_data.get('errmsg')}")
-    token = token_data['access_token']
+def _load_accounts_raw():
+    acc_path = os.path.join(BASE_DIR, 'server', 'data', 'accounts.json')
+    return load_json(acc_path, [])
 
-    upload_url = f"https://api.weixin.qq.com/cgi-bin/material/add_material?access_token={token}&type=image"
-    filename = os.path.basename(image_path)
-    with open(image_path, 'rb') as f:
-        resp = req.post(upload_url, files={'media': (filename, f, 'image/jpeg')}, timeout=60)
-    data = resp.json()
-    if data.get('errcode', 0) != 0:
-        raise Exception(f"上传图片失败[{data.get('errcode')}]: {data.get('errmsg')}")
-    return data.get('media_id')
+def get_accounts_list():
+    raw = _load_accounts_raw()
+    if isinstance(raw, list):
+        return [a['name'] for a in raw if 'name' in a]
+    return list(raw.keys())
 
+def get_account_config(name):
+    raw = _load_accounts_raw()
+    if isinstance(raw, list):
+        for a in raw:
+            if a.get('name') == name:
+                return a
+        return None
+    return raw.get(name)
 
-def _md_to_wechat_html(md_content, title=''):
-    """使用 doocs 脚本将 markdown 转换为微信 HTML"""
-    import tempfile
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.md', delete=False, encoding='utf-8') as f:
-        f.write(md_content)
-        md_path = f.name
-    html_path = md_path.replace('.md', '.html')
-    try:
-        result = _run_py('markdown_to_wechat_doocs.py', '-i', md_path, '-o', html_path, '--theme', 'orange', timeout=30)
-        if result.returncode != 0:
-            log.warning(f'markdown_to_wechat_doocs warning: {result.stderr[-200:]}')
-        if os.path.exists(html_path):
-            with open(html_path, 'r', encoding='utf-8') as f:
-                return f.read()
-        return f"<h1>{title}</h1>" + "".join(f"<p>{line}</p>" for line in md_content.split('\n') if line.strip())
-    finally:
-        if os.path.exists(md_path):
-            os.unlink(md_path)
-        if os.path.exists(html_path):
-            os.unlink(html_path)
-
-
-# ==================== 认证路由 ====================
-
-@app.route('/api/auth/login', methods=['POST'])
-def login():
-    data = request.get_json()
-    if not data:
-        return jsonify({'status': 'error', 'message': 'invalid JSON'}), 400
-    password = data.get('password', '')
-    stored_hash = get_password_hash()
-    if _hash_password(password) != stored_hash:
-        return jsonify({'status': 'error', 'message': '密码错误'}), 401
-    token = secrets.token_urlsafe(32)
-    _sessions[token] = {'expires': datetime.now() + timedelta(hours=12)}
-    return jsonify({'status': 'success', 'token': token})
-
-
-@app.route('/api/auth/change-password', methods=['POST'])
-@require_auth
-def change_password():
-    data = request.get_json()
-    old_pwd = data.get('old_password', '')
-    new_pwd = data.get('new_password', '')
-    if len(new_pwd) < 4:
-        return jsonify({'status': 'error', 'message': '新密码至少4位'}), 400
-    if _hash_password(old_pwd) != get_password_hash():
-        return jsonify({'status': 'error', 'message': '原密码错误'}), 400
-    save_password(new_pwd)
-    return jsonify({'status': 'success', 'message': '密码已修改'})
-
-
-@app.route('/api/auth/verify', methods=['GET'])
-@require_auth
-def verify_token():
-    return jsonify({'status': 'success'})
-
-
-# ==================== AI Key 路由 ====================
+# ============ AI Key ============
 
 @app.route('/api/ai-key', methods=['GET'])
-@require_auth
-def get_api_key():
-    key = get_ai_key()
-    return jsonify({'api_key': key[:8] + '****' + key[-4:] if len(key) > 12 else ''})
-
+def get_ai_key():
+    return jsonify({'key': XINGDONG_API_KEY, 'has_key': bool(XINGDONG_API_KEY)})
 
 @app.route('/api/ai-key', methods=['POST'])
-@require_auth
-def set_api_key():
+def set_ai_key():
     data = request.get_json()
-    key = data.get('api_key', '').strip()
-    if not key:
-        return jsonify({'status': 'error', 'message': '请输入API Key'}), 400
-    save_ai_key(key)
-    return jsonify({'status': 'success', 'message': 'API Key已保存'})
-
+    key = data.get('key', '').strip()
+    save_json(apikey_path, {'xingdong': key})
+    get_xingdong_key()
+    return jsonify({'ok': True})
 
 @app.route('/api/ai/test-key', methods=['POST'])
-@require_auth
-def test_api_key():
-    data = request.get_json()
-    key = data.get('api_key', '').strip() or get_ai_key()
-    if not key:
-        return jsonify({'success': False, 'error': '请先填写 API Key'})
+def test_ai_key():
     try:
-        import requests as req
-        resp = req.post('https://api.lk888.ai/api/v1/chat/completions', json={
-            'model': 'gpt-5.4', 'messages': [{'role': 'user', 'content': 'hi'}], 'max_tokens': 5
-        }, headers={'Authorization': f'Bearer {key}'}, timeout=10)
-        return jsonify({'success': True, 'model': 'gpt-5.4'})
+        get_xingdong_key()
+        if not XINGDONG_API_KEY:
+            return jsonify({'ok': False, 'msg': 'API key not configured'})
+        result = ai_chat('Reply with just: OK', max_retries=1)
+        return jsonify({'ok': True, 'msg': 'Connection successful'})
     except Exception as e:
-        err_msg = str(e)
-        if hasattr(e, 'response') and e.response is not None:
-            status = e.response.status_code
-            err_msg = 'API Key 无效或已过期' if status in (401, 403) else f'连接失败({status})'
-        return jsonify({'success': False, 'error': err_msg})
+        return jsonify({'ok': False, 'msg': str(e)})
 
-
-# ==================== 公众号管理路由 ====================
-
-@app.route('/api/accounts', methods=['GET'])
-def get_accounts():
-    accounts = load_accounts()
-    safe = [{'name': a['name'], 'app_id': a['app_id'], 'created_at': a.get('created_at', '')} for a in accounts]
-    return jsonify({'accounts': safe})
-
-
-@app.route('/api/accounts/add', methods=['POST'])
-@require_auth
-def add_account():
-    data = request.get_json()
-    name = data.get('name', '').strip()
-    app_id = data.get('app_id', '').strip()
-    app_secret = data.get('app_secret', '').strip()
-    if not name or not app_id or not app_secret:
-        return jsonify({'status': 'error', 'message': '请填写完整信息'}), 400
-    if not app_id.startswith('wx'):
-        return jsonify({'status': 'error', 'message': 'AppID格式错误'}), 400
-    accounts = load_accounts()
-    if any(a['name'] == name for a in accounts):
-        return jsonify({'status': 'error', 'message': f'"{name}" 已存在'}), 400
-    try:
-        _verify_wechat_credentials(app_id, app_secret)
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': f'凭证无效: {e}'}), 400
-    accounts.append({'name': name, 'app_id': app_id, 'app_secret': app_secret,
-                     'created_at': datetime.now().strftime('%Y-%m-%dT%H:%M:%S')})
-    save_accounts(accounts)
-    return jsonify({'status': 'success', 'message': f'"{name}" 添加成功'})
-
-
-@app.route('/api/accounts/delete', methods=['POST'])
-@require_auth
-def delete_account():
-    data = request.get_json()
-    name = data.get('name', '').strip()
-    accounts = load_accounts()
-    original = len(accounts)
-    accounts = [a for a in accounts if a['name'] != name]
-    if len(accounts) == original:
-        return jsonify({'status': 'error', 'message': f'"{name}" 不存在'}), 400
-    save_accounts(accounts)
-    return jsonify({'status': 'success', 'message': f'"{name}" 已删除'})
-
-
-# ==================== 贴图创建 ====================
+# ============ Original: Create Draft (贴图) ============
 
 @app.route('/api/create-draft', methods=['POST'])
-@require_auth
 def create_draft():
-    data = request.get_json()
+    if stt is None:
+        return jsonify({'status': 'error', 'message': 'social_to_tietu module not loaded'}), 500
+    
+    data = request.get_json() or {}
     url = data.get('url', '').strip()
     account = data.get('account', '').strip()
-    if not url or not account:
-        return jsonify({'status': 'error', 'message': '请填写URL和选择公众号'}), 400
-
-    log.info(f'[tietu] {account} url={url[:60]}...')
+    
+    if not url:
+        return jsonify({'status': 'error', 'message': 'Please enter a URL'}), 400
+    if not account:
+        return jsonify({'status': 'error', 'message': 'Please select an account'}), 400
+    
+    acc = get_account_config(account)
+    if not acc:
+        return jsonify({'status': 'error', 'message': f'Unknown account: {account}'}), 400
+    
+    app_id = acc['app_id']
+    app_secret = acc['app_secret']
+    
     try:
-        result = _run_py('social_to_tietu.py', '--url', url, '--account', account, timeout=180)
-        if result.returncode != 0:
-            log.error(f'tietu failed: {result.stderr[-300:]}')
-            return jsonify({'status': 'error', 'message': f'脚本错误: {result.stderr[-200:]}'}), 500
-        if '---RESULT---' in result.stdout:
-            return jsonify(json.loads(result.stdout.split('---RESULT---')[1].strip()))
-        return jsonify({'status': 'error', 'message': '输出格式异常'}), 500
-    except subprocess.TimeoutExpired:
-        return jsonify({'status': 'error', 'message': '操作超时'}), 500
+        parsed = stt.parse_url(url)
+        output_dir = os.path.join(tempfile.gettempdir(), f'tietu_{int(time.time())}')
+        local_files = stt.download_images(parsed['images'], output_dir)
+        if not local_files:
+            return jsonify({'status': 'error', 'message': 'No images downloaded'}), 500
+        media_ids = stt.upload_images_to_wechat(app_id, app_secret, local_files)
+        if not media_ids:
+            return jsonify({'status': 'error', 'message': 'Failed to upload images'}), 500
+        
+        clean = stt.clean_title(parsed['title'])
+        author = parsed.get('author', '')
+        digest = parsed.get('desc') or parsed['title']
+        if len(digest) > 120:
+            digest = digest[:117] + '...'
+        
+        body_html = ''
+        if parsed.get('desc'):
+            for line in parsed['desc'].split('\n'):
+                line = line.strip()
+                if line:
+                    body_html += f'<p>{line}</p>'
+        
+        result = stt.create_tietu_draft(
+            app_id, app_secret,
+            title=clean, author=author, digest=digest,
+            content=body_html, image_media_ids=media_ids
+        )
+        return jsonify(result)
     except Exception as e:
+        logger.exception('create_draft error')
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
-
-# ==================== 解析链接 ====================
-
-@app.route('/api/parse', methods=['POST'])
-@require_auth
-def parse_url():
-    import requests as req
-    data = request.get_json()
-    url = data.get('url', '').strip()
-    if not url:
-        return jsonify({'status': 'error', 'message': '请输入链接'}), 400
-
-    try:
-        # 先用 api.bugpk.com 解析
-        resp = req.get('https://api.bugpk.com/api/short_videos', params={'url': url}, timeout=30)
-        apidata = resp.json()
-        if apidata.get('code') == 200:
-            d = apidata['data']
-            images = d.get('images', [])
-            author_info = d.get('author', {})
-            return jsonify({
-                'status': 'success',
-                'title': d.get('title', ''),
-                'desc': d.get('desc', ''),
-                'images': images,
-                'image_count': len(images),
-                'author': author_info.get('name') or author_info.get('nickname', ''),
-                'platform': d.get('type', 'unknown'),
-                'source_url': url
-            })
-        return jsonify({'status': 'error', 'message': f"解析失败: {apidata.get('msg', '未知错误')}"}), 400
-    except Exception as e:
-        return jsonify({'status': 'error', 'message': f'解析失败: {e}'}), 500
-
-
-# ==================== AI 二创 ====================
+# ============ AI二创 ============
 
 @app.route('/api/ai/rewrite-text', methods=['POST'])
-@require_auth
 def ai_rewrite_text():
-    data = request.get_json()
+    """AI rewrite text content"""
+    data = request.get_json() or {}
     text = data.get('text', '').strip()
-    style = data.get('style', '改写得更吸引人')
+    style = data.get('style', 'general')
+    
     if not text:
-        return jsonify({'status': 'error', 'message': '请输入原文'}), 400
-
-    prompt_map = {
-        '更吸引人': '你是一个爆款文案改写专家。请将以下文案改写得更吸引人，适合在公众号发布。保持核心信息不变，用更有感染力的语言表达，加入适当的emoji和互动感。字数控制在300-500字。',
-        '更专业': '你是一个专业文案编辑。请将以下文案改写得更专业、更有深度。去掉口语化表达，使用正式但不枯燥的语言，条理清晰。字数控制在300-500字。',
-        '更简洁': '你是一个精炼文案专家。请将以下文案压缩得更简洁，去掉冗余表达，保留核心精华。提炼出最有力的观点。字数控制在200-300字。',
-        '小红书风格': '你是一个小红书种草文案写手。请将以下文案改成小红书风格的种草文案，多用emoji、感叹号、分段式表达。像分享心得一样自然。字数控制在300-500字。',
+        return jsonify({'error': 'No text provided'}), 400
+    
+    style_prompts = {
+        'general': 'You are a social media content expert. Rewrite the following content to be more engaging and original. Keep the core meaning but make it fresh. Output the rewritten text only, no extra commentary.',
+        'humorous': 'You are a humorous content creator. Rewrite the following content with funny, witty tone. Add some humor while keeping the core information. Output the rewritten text only.',
+        'professional': 'You are a professional content writer. Rewrite the following content in a polished, authoritative tone. Make it sound expert-level. Output the rewritten text only.',
+        'emotional': 'You are an emotional storyteller. Rewrite the following content to be warm, touching, and relatable. Create emotional resonance. Output the rewritten text only.',
     }
-    system_prompt = prompt_map.get(style, prompt_map['更吸引人'])
-    user_prompt = f"原标题：{data.get('title', '')}\n\n原文：{text}"
-
+    
+    system = style_prompts.get(style, style_prompts['general'])
+    
     try:
-        result = _call_ai([
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': user_prompt}
-        ], model='gpt-5.4', max_tokens=2000, temperature=0.8)
-        return jsonify({'status': 'success', 'rewritten': result, 'style': style})
+        result = ai_chat(f'Rewrite this content:\n\n{text}', system_prompt=system)
+        return jsonify({'text': result})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/ai/generate-image', methods=['POST'])
-@require_auth
-def generate_image():
-    data = request.get_json()
+def ai_generate_image_endpoint():
+    """AI generate image"""
+    data = request.get_json() or {}
     prompt = data.get('prompt', '').strip()
+    
     if not prompt:
-        return jsonify({'status': 'error', 'message': '请输入图片描述'}), 400
+        return jsonify({'error': 'No prompt provided'}), 400
+    
     try:
-        result_url = _generate_image(prompt)
-        if not result_url:
-            return jsonify({'status': 'error', 'message': '图片生成结果为空'}), 500
-        return jsonify({'status': 'success', 'image_url': result_url})
+        url = ai_generate_image(prompt)
+        return jsonify({'url': url})
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({'error': str(e)}), 500
 
-
-# ==================== AI写文章 → 草稿箱 ====================
-
-@app.route('/api/ai/write-article', methods=['POST'])
-@require_auth
-def ai_write_article():
-    data = request.get_json()
-    topic = data.get('topic', '').strip()
-    style = data.get('style', '通用')
-    if not topic:
-        return jsonify({'status': 'error', 'message': '请输入主题'}), 400
-
-    style_guides = {
-        '宠物': '你是一个宠物类公众号作者。文章要有爱心、温暖、接地气。多用具体场景和小故事。不要过度说教。适合养宠人阅读。',
-        '花艺': '你是一个花艺生活类公众号作者。文章要优雅、有格调、有生活气息。分享花艺知识的同时传递美好的生活态度。',
-        '科技': '你是一个科技类公众号作者。文章要专业但不晦涩，用通俗语言解释技术。适合普通读者理解。',
-        '生活': '你是一个生活方式类公众号作者。文章要温暖、治愈、正能量。用讲故事的方式传递生活智慧。',
-        '通用': '你是一个优秀的公众号作者。文章要有深度、有观点、易读。用自然流畅的中文，避免AI腔。',
-    }
-
-    system_prompt = f"""{style_guides.get(style, style_guides['通用'])}
-
-写作要求：
-1. 标题要吸引人，15字以内
-2. 用Markdown格式，标题用 ## 开头
-3. 文章1200-1500字
-4. 分3-4个小标题段落
-5. 开头要有hook（吸引读者读下去）
-6. 结尾要有总结或互动引导
-7. 不要用"在当今"、"随着...的发展"这类AI套话
-8. 像真人写的，有感情、有态度"""
-
+@app.route('/api/ai/rewrite-and-draft', methods=['POST'])
+def ai_rewrite_and_draft():
+    """
+    Full AI二创 pipeline:
+    1. Parse URL to get text + images
+    2. AI rewrite the text
+    3. AI generate new images
+    4. Upload images to WeChat
+    5. Create newspic draft
+    """
+    data = request.get_json() or {}
+    url = data.get('url', '').strip()
+    account = data.get('account', '').strip()
+    style = data.get('style', 'general')
+    
+    if not url or not account:
+        return jsonify({'error': 'URL and account required'}), 400
+    
+    acc = get_account_config(account)
+    if not acc:
+        return jsonify({'error': f'Unknown account: {account}'}), 400
+    
     try:
-        article = _call_ai([
-            {'role': 'system', 'content': system_prompt},
-            {'role': 'user', 'content': f'写一篇关于"{topic}"的公众号文章'}
-        ], model='gpt-5.4', max_tokens=3000, temperature=0.85)
-
-        # 提取标题（第一行 ## 标题）
-        title = topic
-        lines = article.split('\n')
-        for line in lines:
-            line = line.strip()
-            if line.startswith('## '):
-                title = line.replace('## ', '').strip()
-                break
-            elif line.startswith('# ') and not line.startswith('## '):
-                title = line.replace('# ', '').strip()
-                break
-
+        # Step 1: Parse URL
+        parsed = stt.parse_url(url)
+        original_text = parsed.get('desc') or ''
+        title = stt.clean_title(parsed['title'])
+        original_images = parsed.get('images', [])
+        
+        if not original_text and not original_images:
+            return jsonify({'error': 'No text or images found in the post'}), 400
+        
+        # Step 2: AI rewrite text
+        rewritten_text = ''
+        rewritten_title = title
+        if original_text:
+            style_map = {
+                'general': 'Rewrite this social media content to be more engaging and original. Keep core meaning but make it fresh.',
+                'humorous': 'Rewrite with a funny, witty tone. Add humor while keeping core info.',
+                'professional': 'Rewrite in a polished, authoritative, expert tone.',
+                'emotional': 'Rewrite to be warm, touching, and emotionally resonant.',
+            }
+            sys_prompt = style_map.get(style, style_map['general'])
+            result = ai_chat(
+                f'Rewrite the following content. Also provide a rewritten title (prefix with "TITLE: ").\n\nOriginal title: {title}\n\nOriginal content:\n{original_text}',
+                system_prompt=sys_prompt
+            )
+            # Parse out title if present
+            lines = result.strip().split('\n')
+            if lines[0].startswith('TITLE:'):
+                rewritten_title = lines[0].replace('TITLE:', '').strip()
+                rewritten_text = '\n'.join(lines[1:]).strip()
+            else:
+                rewritten_text = result.strip()
+        
+        # Step 3: Generate new images
+        image_count = min(len(original_images), 6)
+        new_image_paths = []
+        output_dir = os.path.join(tempfile.gettempdir(), f'ai_tietu_{int(time.time())}')
+        os.makedirs(output_dir, exist_ok=True)
+        
+        for i in range(image_count):
+            img_prompt = f'{rewritten_title} - {rewritten_text[:200] if rewritten_text else ""}. Image {i+1} of {image_count}.'
+            try:
+                img_url = ai_generate_image(img_prompt)
+                if img_url:
+                    img_path = os.path.join(output_dir, f'ai_img_{i}.jpg')
+                    download_url(img_url, img_path)
+                    compress_image(img_path)
+                    new_image_paths.append(img_path)
+                    logger.info(f'Generated image {i+1}/{image_count}: {os.path.getsize(img_path)} bytes')
+            except Exception as e:
+                logger.warning(f'Image {i+1} gen failed: {e}')
+        
+        if not new_image_paths:
+            # Fallback to original images
+            original_dir = os.path.join(tempfile.gettempdir(), f'tietu_orig_{int(time.time())}')
+            os.makedirs(original_dir, exist_ok=True)
+            new_image_paths = stt.download_images(original_images, original_dir)
+            logger.info(f'Using {len(new_image_paths)} original images as fallback')
+        
+        # Step 4: Upload to WeChat
+        app_id = acc['app_id']
+        app_secret = acc['app_secret']
+        media_ids = stt.upload_images_to_wechat(app_id, app_secret, new_image_paths)
+        if not media_ids:
+            return jsonify({'error': 'Failed to upload images to WeChat'}), 500
+        
+        # Step 5: Create newspic draft
+        author = parsed.get('author', '')
+        body_html = ''
+        if rewritten_text:
+            for line in rewritten_text.split('\n'):
+                line = line.strip()
+                if line:
+                    body_html += f'<p>{line}</p>'
+        
+        result = stt.create_tietu_draft(
+            app_id, app_secret,
+            title=rewritten_title, author=author,
+            digest=rewritten_text[:120] if rewritten_text else rewritten_title,
+            content=body_html, image_media_ids=media_ids
+        )
+        
         return jsonify({
             'status': 'success',
-            'title': title[:30],
-            'content_md': article,
-            'style': style
+            'media_id': result.get('media_id'),
+            'title': rewritten_title,
+            'image_count': len(media_ids),
+            'rewritten_text': rewritten_text,
+            'generated_images': len(new_image_paths)
         })
+        
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        logger.exception('rewrite_and_draft error')
+        return jsonify({'error': str(e)}), 500
 
+# ============ AI写文章 ============
 
-@app.route('/api/ai/create-article-draft', methods=['POST'])
-@require_auth
-def create_article_draft():
-    """
-    完整流程：生成封面图 → 上传封面 → MD转HTML → 创建草稿
-    """
-    data = request.get_json()
-    account = data.get('account', '').strip()
-    title = data.get('title', '').strip()
-    content_md = data.get('content_md', '').strip()
-    author = data.get('author', '').strip()
-    image_prompt = data.get('image_prompt', '').strip()
+@app.route('/api/ai/write-article', methods=['POST'])
+def ai_write_article():
+    """Generate article content from topic"""
+    data = request.get_json() or {}
+    topic = data.get('topic', '').strip()
+    style = data.get('style', 'general')
+    
+    if not topic:
+        return jsonify({'error': 'Topic required'}), 400
+    
+    style_map = {
+        'general': 'You are an expert content writer for WeChat public accounts. Write a 1200-1500 word article in Chinese.',
+        'pet': 'You are an expert pet content writer for WeChat public accounts. Write a 1200-1500 word article about pets in Chinese.',
+        'floral': 'You are an expert floral arrangement content writer. Write a 1200-1500 word article about flowers/floral design in Chinese.',
+        'tech': 'You are a tech industry content writer. Write a 1200-1500 word article in Chinese.',
+        'lifestyle': 'You are a lifestyle content writer. Write a 1200-1500 word article in Chinese.',
+    }
+    
+    system = style_map.get(style, style_map['general'])
+    prompt = f'''Write an article in Chinese (1200-1500 words) about: {topic}
 
-    if not account or not title or not content_md:
-        return jsonify({'status': 'error', 'message': '缺少标题/内容/公众号'}), 400
-
-    # 获取公众号凭证
-    accounts = load_accounts()
-    acc = next((a for a in accounts if a['name'] == account), None)
-    if not acc:
-        return jsonify({'status': 'error', 'message': f'公众号 "{account}" 不存在'}), 400
-
-    temp_dir = tempfile.mkdtemp(prefix='article_')
+Requirements:
+1. Output in Markdown format
+2. Include a catchy title on the first line (format: # Title)
+3. Natural, engaging writing style (not AI-sounding)
+4. Well-structured with headers and paragraphs
+5. Use emojis sparingly
+6. End with a brief summary
+7. Output the full article in Markdown only, no extra commentary'''
 
     try:
-        # Step 1: 生成封面图
-        cover_prompt = image_prompt or f"公众号文章封面图，" + title[:20] + "，简约风格，16:9横屏构图，适合公众号封面"
-        log.info(f'[article] generate cover: {cover_prompt[:60]}...')
-        cover_url = _generate_image(cover_prompt)
-        cover_path = os.path.join(temp_dir, 'cover.jpg')
-        _download_image(cover_url, cover_path)
-        log.info(f'[article] cover saved: {os.path.getsize(cover_path)/1024:.0f}KB')
+        result = ai_chat(prompt, system_prompt=system)
+        return jsonify({'article': result})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
-        # Step 2: 上传封面到微信
-        log.info(f'[article] upload cover to wechat...')
-        thumb_media_id = _upload_to_wechat(acc['app_id'], acc['app_secret'], cover_path)
-        log.info(f'[article] thumb_media_id: {thumb_media_id[:15]}...')
+@app.route('/api/ai/create-article-draft', methods=['POST'])
+def ai_create_article_draft():
+    """
+    Full pipeline: topic → AI write article → generate cover → upload → create draft
+    """
+    data = request.get_json() or {}
+    topic = data.get('topic', '').strip()
+    account = data.get('account', '').strip()
+    style = data.get('style', 'general')
+    
+    if not topic or not account:
+        return jsonify({'error': 'Topic and account required'}), 400
+    
+    acc = get_account_config(account)
+    if not acc:
+        return jsonify({'error': f'Unknown account: {account}'}), 400
+    
+    try:
+        app_id = acc['app_id']
+        app_secret = acc['app_secret']
+        
+        # Step 1: Write article
+        style_map = {
+            'general': 'Expert content writer for WeChat.',
+            'pet': 'Expert pet content writer for WeChat.',
+            'floral': 'Expert floral design content writer.',
+            'tech': 'Tech industry content writer.',
+            'lifestyle': 'Lifestyle content writer.',
+        }
+        system = style_map.get(style, style_map['general'])
+        prompt = f'''Write a Chinese article (1200-1500 words) about: {topic}
 
-        # Step 3: MD转HTML
-        log.info(f'[article] md to html...')
-        html_content = _md_to_wechat_html(content_md, title)
+Requirements:
+1. Markdown format, title on first line as # Title
+2. Natural engaging style (not AI-sounding)
+3. Well-structured with headers (##, ###)
+4. Use emojis sparingly
+5. Brief summary at the end
+6. Full article in Markdown only'''
 
-        # Step 4: 创建草稿 (用 subprocess 调用 create_draft.py)
-        # 先写入HTML到临时文件
-        html_path = os.path.join(temp_dir, 'article.html')
-        with open(html_path, 'w', encoding='utf-8') as f:
-            f.write(html_content)
-
-        # 直接调用API（避免 subprocess 传 HTML 的问题）
-        import requests as req
-        token_resp = req.get("https://api.weixin.qq.com/cgi-bin/token",
-                             params={"grant_type": "client_credential", "appid": acc['app_id'], "secret": acc['app_secret']},
-                             timeout=30)
-        token = token_resp.json()['access_token']
-
-        draft_data = {
+        article_md = ai_chat(prompt, system_prompt=system)
+        
+        # Extract title from markdown
+        title_match = re.search(r'^#\s+(.+)', article_md, re.MULTILINE)
+        title = title_match.group(1).strip() if title_match else topic
+        title = stt.clean_title(title)
+        
+        # Step 2: Generate cover image
+        cover_prompt = f'Cover image for article: {title}. Professional, clean, eye-catching.'
+        cover_url = ai_generate_image(cover_prompt)
+        
+        cover_path = None
+        thumb_media_id = None
+        output_dir = os.path.join(tempfile.gettempdir(), f'article_{int(time.time())}')
+        os.makedirs(output_dir, exist_ok=True)
+        
+        if cover_url:
+            cover_path = os.path.join(output_dir, 'cover.jpg')
+            download_url(cover_url, cover_path)
+            compress_image(cover_path)
+            
+            # Upload as thumb for cover
+            try:
+                import urllib.request
+                token_url = f'https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid={app_id}&secret={app_secret}'
+                token_req = urllib.request.Request(token_url)
+                with urllib.request.urlopen(token_req, timeout=30) as token_resp:
+                    token_data = json.loads(token_resp.read().decode('utf-8'))
+                access_token = token_data['access_token']
+                
+                # Upload thumb
+                import io
+                media_url = f'https://api.weixin.qq.com/cgi-bin/material/add_material?access_token={access_token}&type=image'
+                boundary = '----FormBoundary7MA4YWxkTrZu0gW'
+                with open(cover_path, 'rb') as f:
+                    img_data = f.read()
+                body = (
+                    f'--{boundary}\r\n'
+                    f'Content-Disposition: form-data; name="media"; filename="cover.jpg"\r\n'
+                    f'Content-Type: image/jpeg\r\n\r\n'
+                ).encode() + img_data + f'\r\n--{boundary}--\r\n'.encode()
+                
+                upload_req = urllib.request.Request(
+                    media_url,
+                    data=body,
+                    headers={'Content-Type': f'multipart/form-data; boundary={boundary}'}
+                )
+                with urllib.request.urlopen(upload_req, timeout=60) as upload_resp:
+                    upload_data = json.loads(upload_resp.read().decode('utf-8'))
+                thumb_media_id = upload_data.get('thumb_media_id') or upload_data.get('media_id')
+            except Exception as e:
+                logger.warning(f'Cover upload failed: {e}')
+        
+        # Step 3: Convert Markdown to WeChat HTML
+        md_file = os.path.join(output_dir, 'article.md')
+        html_file = os.path.join(output_dir, 'article.html')
+        with open(md_file, 'w', encoding='utf-8') as f:
+            f.write(article_md)
+        
+        convert_script = os.path.join(SCRIPT_DIR, 'markdown_to_wechat_doocs.py')
+        if os.path.exists(convert_script):
+            convert_result = subprocess.run(
+                ['python', convert_script, '-i', md_file, '-o', html_file, '--theme', 'orange'],
+                capture_output=True, text=True, timeout=30, encoding='utf-8',
+                errors='replace'
+            )
+            if convert_result.returncode == 0 and os.path.exists(html_file):
+                with open(html_file, 'r', encoding='utf-8') as f:
+                    html_content = f.read()
+            else:
+                logger.warning(f'MD conversion failed: {convert_result.stderr}')
+                html_content = '<p>' + article_md.replace('\n', '</p><p>') + '</p>'
+        else:
+            html_content = '<p>' + article_md.replace('\n', '</p><p>') + '</p>'
+        
+        # Step 4: Create article draft (news type, not newspic)
+        draft_url = f'https://api.weixin.qq.com/cgi-bin/draft/add?access_token={access_token}'
+        draft_body = {
             'articles': [{
                 'title': title,
+                'author': '',
+                'digest': article_md[:120].replace('#', '').replace('*', '').strip(),
                 'content': html_content,
-                'thumb_media_id': thumb_media_id,
-                'show_cover_pic': 1,
-                'digest': content_md[:100].replace('#', '').replace('*', '').strip()
+                'thumb_media_id': thumb_media_id or '',
+                'content_source_url': '',
+                'need_open_comment': 0,
+                'only_fans_can_comment': 0
             }]
         }
-        if author:
-            draft_data['articles'][0]['author'] = author[:8]
-
-        resp = req.post(f'https://api.weixin.qq.com/cgi-bin/draft/add?access_token={token}',
-                        data=json.dumps(draft_data, ensure_ascii=False).encode('utf-8'),
-                        headers={'Content-Type': 'application/json; charset=utf-8'}, timeout=30)
-        result = resp.json()
-        if result.get('errcode', 0) != 0:
-            raise Exception(f"创建草稿失败[{result.get('errcode')}]: {result.get('errmsg')}")
-
-        media_id = result['media_id']
-        log.info(f'[article] draft created: {media_id}')
-
+        
+        draft_req = urllib.request.Request(
+            draft_url,
+            data=json.dumps(draft_body, ensure_ascii=False).encode('utf-8'),
+            headers={'Content-Type': 'application/json'}
+        )
+        with urllib.request.urlopen(draft_req, timeout=30) as draft_resp:
+            draft_data = json.loads(draft_resp.read().decode('utf-8'))
+        
+        media_id = draft_data.get('media_id')
+        
         return jsonify({
             'status': 'success',
             'media_id': media_id,
             'title': title,
-            'type': 'article'
+            'has_cover': bool(thumb_media_id)
         })
-
+        
     except Exception as e:
-        log.error(f'[article] error: {e}')
-        return jsonify({'status': 'error', 'message': str(e)}), 500
-    finally:
-        # 清理临时文件
-        import shutil
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        logger.exception('create_article_draft error')
+        return jsonify({'error': str(e)}), 500
 
+# ============ Settings ============
 
-# ==================== 静态文件 + 主页 ====================
-
-@app.route('/')
-def index():
-    from flask import send_from_directory
-    return send_from_directory(os.path.join(BASE_DIR, 'templates'), 'index.html')
-
-
-@app.route('/api/health', methods=['GET'])
-def health():
-    return jsonify({
-        'status': 'ok',
-        'script_exists': os.path.isfile(TIETU_SCRIPT),
-        'accounts_count': len(load_accounts()),
-        'has_password': bool(get_password_hash()),
-        'has_ai_key': bool(get_ai_key())
-    })
-
+@app.route('/api/parse', methods=['POST'])
+def parse_url_api():
+    """Parse social media URL (for preview)"""
+    data = request.get_json() or {}
+    url = data.get('url', '').strip()
+    if not url:
+        return jsonify({'error': 'URL required'}), 400
+    try:
+        parsed = stt.parse_url(url)
+        return jsonify({
+            'title': parsed.get('title', ''),
+            'desc': parsed.get('desc', ''),
+            'author': parsed.get('author', ''),
+            'images': parsed.get('images', []),
+            'image_count': len(parsed.get('images', []))
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    print(f'Server on port {port} (Auth + AI + WeChat)')
-    app.run(host='0.0.0.0', port=port, debug=False)
+    logger.info(f'Starting server on http://0.0.0.0:{port}')
+    app.run(host='0.0.0.0', port=port, debug=True)
