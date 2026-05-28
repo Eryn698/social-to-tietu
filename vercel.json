@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "server.py",
+      "use": "@vercel/python",
+      "config": {"runtime": "python3.11"}
+    }
+  ],
+  "routes": [
+    {"src": "/api/create-draft", "dest": "/server.py"},
+    {"src": "/api/create-draft/(.*)", "dest": "/server.py"},
+    {"src": "/api/parse", "dest": "/server.py"},
+    {"src": "/api/accounts", "dest": "/server.py"},
+    {"src": "/api/health", "dest": "/server.py"},
+    {"src": "/api/ai-key", "dest": "/server.py"},
+    {"src": "/api/ai/(.*)", "dest": "/server.py"},
+    {"src": "/static/(.*)", "dest": "/static/$1"},
+    {"src": "/(.*)", "dest": "/templates/index.html"}
+  ]
+}
